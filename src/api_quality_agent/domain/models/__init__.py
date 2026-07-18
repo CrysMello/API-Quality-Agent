@@ -1,9 +1,13 @@
 from api_quality_agent.domain.models.active_selection import ActiveSelection
 from api_quality_agent.domain.models.analysis_warning import AnalysisWarning
+from api_quality_agent.domain.models.analyzed_collection_request import (
+    AnalyzedCollectionRequest,
+)
 from api_quality_agent.domain.models.api_analysis_result import ApiAnalysisResult
 from api_quality_agent.domain.models.api_specification import ApiSpecification
 from api_quality_agent.domain.models.api_specification_type import ApiSpecificationType
 from api_quality_agent.domain.models.approval_result import ApprovalResult
+from api_quality_agent.domain.models.artifact_location import ArtifactLocation
 from api_quality_agent.domain.models.assertion_definition import AssertionDefinition
 from api_quality_agent.domain.models.assertion_origin import AssertionOrigin
 from api_quality_agent.domain.models.assertion_type import AssertionType
@@ -23,6 +27,7 @@ from api_quality_agent.domain.models.endpoint import Endpoint
 from api_quality_agent.domain.models.endpoint_analysis import EndpointAnalysis
 from api_quality_agent.domain.models.execution_context import ExecutionContext
 from api_quality_agent.domain.models.execution_mode import ExecutionMode
+from api_quality_agent.domain.models.generated_artifact import GeneratedArtifact
 from api_quality_agent.domain.models.input_origin import InputOrigin
 from api_quality_agent.domain.models.managed_block import ManagedBlock
 from api_quality_agent.domain.models.media_type_definition import MediaTypeDefinition
@@ -70,10 +75,12 @@ from api_quality_agent.domain.models.workspace_ref import WorkspaceRef
 __all__ = [
     "ActiveSelection",
     "AnalysisWarning",
+    "AnalyzedCollectionRequest",
     "ApiAnalysisResult",
     "ApiSpecification",
     "ApiSpecificationType",
     "ApprovalResult",
+    "ArtifactLocation",
     "AssertionDefinition",
     "AssertionOrigin",
     "AssertionType",
@@ -98,6 +105,7 @@ __all__ = [
     "EndpointAnalysis",
     "ExecutionContext",
     "ExecutionMode",
+    "GeneratedArtifact",
     "InputOrigin",
     "ManagedBlock",
     "MediaTypeDefinition",

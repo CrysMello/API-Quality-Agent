@@ -2,6 +2,7 @@ import re
 
 from api_quality_agent.domain.models import (
     AnalysisWarning,
+    AnalyzedCollectionRequest,
     ApiAnalysisResult,
     ApiSpecification,
     AuthType,
@@ -69,6 +70,37 @@ class ApiAnalysisEngine:
         )
 
     def analyze_collection(self, document: PostmanCollectionDocument) -> ApiAnalysisResult:
+        warnings, entries, endpoints = self._analyze_collection_entries(document)
+
+        dependencies = _find_variable_dependencies(entries, endpoints)
+        dependencies += _find_path_dependencies(endpoints)
+
+        return ApiAnalysisResult(
+            source_type="postman",
+            endpoints=endpoints,
+            dependencies=dependencies,
+            warnings=tuple(warnings),
+        )
+
+    def analyze_collection_requests(
+        self, document: PostmanCollectionDocument
+    ) -> tuple[AnalyzedCollectionRequest, ...]:
+        # Mesma travessia e mesma ordem usadas por analyze_collection: permite
+        # relacionar cada EndpointAnalysis ao CollectionRequest bruto que o
+        # originou (necessário para acessar examples/scripts na geração).
+        _warnings, entries, endpoints = self._analyze_collection_entries(document)
+        return tuple(
+            AnalyzedCollectionRequest(raw_request=raw, analysis=analysis)
+            for (raw, _normalized), analysis in zip(entries, endpoints)
+        )
+
+    def _analyze_collection_entries(
+        self, document: PostmanCollectionDocument
+    ) -> tuple[
+        list[AnalysisWarning],
+        list[tuple[CollectionRequest, NormalizedRequest]],
+        tuple[EndpointAnalysis, ...],
+    ]:
         warnings: list[AnalysisWarning] = [
             AnalysisWarning(code="COLLECTION_PARSER_WARNING", message=message, endpoint=None)
             for message in document.warnings
@@ -82,15 +114,7 @@ class ApiAnalysisEngine:
             for raw, normalized in entries
         )
 
-        dependencies = _find_variable_dependencies(entries, endpoints)
-        dependencies += _find_path_dependencies(endpoints)
-
-        return ApiAnalysisResult(
-            source_type="postman",
-            endpoints=endpoints,
-            dependencies=dependencies,
-            warnings=tuple(warnings),
-        )
+        return warnings, entries, endpoints
 
 
 # --- OpenAPI / Swagger -------------------------------------------------------

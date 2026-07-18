@@ -1,5 +1,8 @@
 from api_quality_agent.application.use_cases.clear_collection import ClearCollectionUseCase
 from api_quality_agent.application.use_cases.clear_workspace import ClearWorkspaceUseCase
+from api_quality_agent.application.use_cases.generate_collection_tests import (
+    GenerateCollectionTestsUseCase,
+)
 from api_quality_agent.application.use_cases.get_current_collection import (
     GetCurrentCollectionUseCase,
 )
@@ -27,6 +30,7 @@ __all__ = [
     "DiagnosticCheck",
     "DiagnosticReport",
     "EffectiveConfiguration",
+    "GenerateCollectionTestsUseCase",
     "GetCurrentCollectionUseCase",
     "GetCurrentWorkspaceUseCase",
     "ListCollectionsUseCase",
