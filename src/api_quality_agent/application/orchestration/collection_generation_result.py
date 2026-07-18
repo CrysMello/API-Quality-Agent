@@ -9,6 +9,7 @@ from api_quality_agent.domain.models import (
     DependencyCandidate,
     DiffResult,
     ExecutionContext,
+    PostmanCollectionDocument,
 )
 
 
@@ -19,4 +20,9 @@ class CollectionGenerationResult:
     dependencies: tuple[DependencyCandidate, ...]
     endpoint_outcomes: tuple[EndpointGenerationOutcome, ...]
     diff: DiffResult
+    # Documentos completos (original e com blocos gerenciados aplicados em
+    # cópia), preservados para permitirem a atualização remota segura em uma
+    # etapa posterior sem precisar reprocessar ou reobter a Collection.
+    original_document: PostmanCollectionDocument
+    modified_document: PostmanCollectionDocument
     artifact_locations: tuple[ArtifactLocation, ...] = ()

@@ -7,6 +7,7 @@ from typing import Any, NoReturn
 
 from api_quality_agent.domain.exceptions import (
     AuthenticationError,
+    ConflictError,
     IntegrationError,
     ResourceNotFoundError,
 )
@@ -44,11 +45,17 @@ class PostmanApiClient:
         self._sleep_fn = sleep_fn
 
     def get(self, path: str) -> Any:
+        return self._request("GET", path)
+
+    def put(self, path: str, body: dict[str, Any]) -> Any:
+        return self._request("PUT", path, body=body)
+
+    def _request(self, method: str, path: str, *, body: dict[str, Any] | None = None) -> Any:
         url = f"{self._base_url}{path}"
         attempt = 0
         while True:
             try:
-                return self._perform_request(url)
+                return self._perform_request(url, method=method, body=body)
             except _TransientRequestError as exc:
                 attempt += 1
                 if attempt > self._max_retries:
@@ -61,12 +68,16 @@ class PostmanApiClient:
     def validate_authentication(self) -> None:
         self.get("/me")
 
-    def _perform_request(self, url: str) -> Any:
-        request = urllib.request.Request(
-            url,
-            headers={"X-Api-Key": self._api_key, "Accept": "application/json"},
-            method="GET",
-        )
+    def _perform_request(
+        self, url: str, *, method: str = "GET", body: dict[str, Any] | None = None
+    ) -> Any:
+        headers = {"X-Api-Key": self._api_key, "Accept": "application/json"}
+        data: bytes | None = None
+        if body is not None:
+            data = json.dumps(body).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+
+        request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
             with urllib.request.urlopen(request, timeout=self._timeout_seconds) as response:
                 raw_body = response.read()
@@ -90,6 +101,11 @@ class PostmanApiClient:
         if status == 404:
             raise ResourceNotFoundError(
                 "Recurso não encontrado na API do Postman."
+            ) from exc
+        if status == 409:
+            raise ConflictError(
+                "Conflito ao atualizar a Collection na API do Postman (HTTP 409): a versão "
+                "remota pode ter sido alterada por outra origem desde a última leitura."
             ) from exc
         if status in _TRANSIENT_STATUS_CODES:
             raise _TransientRequestError(

@@ -1,8 +1,11 @@
+import json
+
 import pytest
 
 from api_quality_agent.adapters.postman import PostmanApiClient, PostmanCollectionRepository
 from api_quality_agent.domain.exceptions import IntegrationError
 from api_quality_agent.domain.models import CollectionRef, PostmanCollectionDocument
+from api_quality_agent.parsers import PostmanCollectionParser
 
 
 def _make_repository(server) -> PostmanCollectionRepository:
@@ -10,6 +13,10 @@ def _make_repository(server) -> PostmanCollectionRepository:
         "fake-key", base_url=server.base_url, timeout_seconds=2.0, max_retries=0
     )
     return PostmanCollectionRepository(client)
+
+
+def _parse_document(raw: dict) -> PostmanCollectionDocument:
+    return PostmanCollectionParser().parse_text(json.dumps(raw))
 
 
 # --- Lista de Collections -----------------------------------------------------------
@@ -91,3 +98,70 @@ def test_get_raises_for_invalid_response_shape(postman_test_server):
 
     with pytest.raises(IntegrationError):
         repository.get("123-c1")
+
+
+# --- Atualizar Collection ---------------------------------------------------------------
+
+
+def test_update_sends_serialized_collection_and_returns_confirmed_id(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/123-c1",
+        method="PUT",
+        status=200,
+        body={"collection": {"id": "123-c1", "uid": "123-c1"}},
+    )
+    repository = _make_repository(postman_test_server)
+    document = _parse_document(
+        {
+            "info": {
+                "name": "Col",
+                "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+            },
+            "item": [{"name": "Ping", "request": {"method": "GET", "url": "https://x/y"}}],
+        }
+    )
+
+    confirmed_id = repository.update("123-c1", document)
+
+    assert confirmed_id == "123-c1"
+    sent_body = postman_test_server.received_bodies[0]
+    assert sent_body["collection"]["info"]["name"] == "Col"
+    assert sent_body["collection"]["item"][0]["name"] == "Ping"
+
+
+def test_update_raises_for_invalid_response_shape(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/123-c1", method="PUT", status=200, body={"oops": True}
+    )
+    repository = _make_repository(postman_test_server)
+    document = _parse_document(
+        {
+            "info": {
+                "name": "Col",
+                "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+            },
+            "item": [],
+        }
+    )
+
+    with pytest.raises(IntegrationError):
+        repository.update("123-c1", document)
+
+
+def test_update_raises_when_confirmed_id_is_missing(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/123-c1", method="PUT", status=200, body={"collection": {"name": "Col"}}
+    )
+    repository = _make_repository(postman_test_server)
+    document = _parse_document(
+        {
+            "info": {
+                "name": "Col",
+                "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+            },
+            "item": [],
+        }
+    )
+
+    with pytest.raises(IntegrationError):
+        repository.update("123-c1", document)

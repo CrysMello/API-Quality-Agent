@@ -15,11 +15,26 @@ class _Route:
 
 class _RoutedRequestHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 (nome exigido pela stdlib)
+        self._handle("GET")
+
+    def do_PUT(self) -> None:  # noqa: N802 (nome exigido pela stdlib)
+        self._handle("PUT")
+
+    def _handle(self, method: str) -> None:
         server: "PostmanTestServer" = self.server.test_server  # type: ignore[attr-defined]
         server.received_paths.append(self.path)
+        server.received_methods.append(method)
         server.received_headers.append(dict(self.headers))
 
-        route = server.routes.get(self.path)
+        if method == "PUT":
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            raw_body = self.rfile.read(length) if length else b""
+            try:
+                server.received_bodies.append(json.loads(raw_body) if raw_body else None)
+            except json.JSONDecodeError:
+                server.received_bodies.append(raw_body.decode("utf-8", errors="replace"))
+
+        route = server.routes.get((method, self.path))
         if route is None:
             self._write(404, {"error": "rota não configurada no servidor de teste", "path": self.path})
             return
@@ -56,9 +71,11 @@ class _SilentHTTPServer(http.server.HTTPServer):
 
 class PostmanTestServer:
     def __init__(self) -> None:
-        self.routes: dict[str, _Route] = {}
+        self.routes: dict[tuple[str, str], _Route] = {}
         self.received_paths: list[str] = []
+        self.received_methods: list[str] = []
         self.received_headers: list[dict[str, str]] = []
+        self.received_bodies: list[Any] = []
         self._httpd = _SilentHTTPServer(("127.0.0.1", 0), _RoutedRequestHandler)
         self._httpd.test_server = self  # type: ignore[attr-defined]
         self._thread = threading.Thread(
@@ -72,12 +89,22 @@ class PostmanTestServer:
         return f"http://127.0.0.1:{port}"
 
     def set_route(
-        self, path: str, *, status: int = 200, body: Any = None, delay: float = 0.0
+        self,
+        path: str,
+        *,
+        method: str = "GET",
+        status: int = 200,
+        body: Any = None,
+        delay: float = 0.0,
     ) -> None:
-        self.routes[path] = _Route(status=status, body=body if body is not None else {}, delay=delay)
+        self.routes[(method, path)] = _Route(
+            status=status, body=body if body is not None else {}, delay=delay
+        )
 
-    def set_raw_route(self, path: str, *, status: int = 200, raw_body: str) -> None:
-        self.routes[path] = _Route(status=status, body=raw_body)
+    def set_raw_route(
+        self, path: str, *, method: str = "GET", status: int = 200, raw_body: str
+    ) -> None:
+        self.routes[(method, path)] = _Route(status=status, body=raw_body)
 
     def shutdown(self) -> None:
         self._httpd.shutdown()

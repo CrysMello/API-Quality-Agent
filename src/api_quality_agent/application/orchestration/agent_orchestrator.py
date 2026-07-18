@@ -75,6 +75,8 @@ class AgentOrchestrator:
             dependencies=analysis_result.dependencies,
             endpoint_outcomes=tuple(endpoint_outcomes),
             diff=diff,
+            original_document=document,
+            modified_document=modified_document,
             artifact_locations=(),
         )
 

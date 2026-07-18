@@ -3,6 +3,7 @@ import pytest
 from api_quality_agent.adapters.postman import PostmanApiClient
 from api_quality_agent.domain.exceptions import (
     AuthenticationError,
+    ConflictError,
     IntegrationError,
     ResourceNotFoundError,
 )
@@ -177,3 +178,87 @@ def test_constructor_rejects_empty_api_key():
 
     with pytest.raises(InputError):
         PostmanApiClient("")
+
+
+# --- PUT (usado pela atualização remota) ------------------------------------------
+
+
+def test_put_sends_json_body_with_content_type_and_returns_parsed_response(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/c1", method="PUT", status=200, body={"collection": {"id": "c1"}}
+    )
+    client = _make_client(postman_test_server)
+
+    result = client.put("/collections/c1", {"collection": {"info": {"name": "Col"}}})
+
+    assert result == {"collection": {"id": "c1"}}
+    assert postman_test_server.received_methods[0] == "PUT"
+    assert postman_test_server.received_bodies[0] == {"collection": {"info": {"name": "Col"}}}
+    assert postman_test_server.received_headers[0]["Content-Type"] == "application/json"
+    assert postman_test_server.received_headers[0]["X-Api-Key"] == FAKE_API_KEY
+
+
+def test_put_401_raises_authentication_error_without_retry(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/c1", method="PUT", status=401, body={"error": "invalid key"}
+    )
+    client = _make_client(postman_test_server)
+
+    with pytest.raises(AuthenticationError):
+        client.put("/collections/c1", {"collection": {}})
+
+    assert len(postman_test_server.received_paths) == 1
+
+
+def test_put_409_raises_conflict_error_without_retry(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/c1", method="PUT", status=409, body={"error": "conflict"}
+    )
+    client = _make_client(postman_test_server)
+
+    with pytest.raises(ConflictError):
+        client.put("/collections/c1", {"collection": {}})
+
+    assert len(postman_test_server.received_paths) == 1
+
+
+def test_put_429_retries_and_succeeds_when_a_later_attempt_works(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/c1", method="PUT", status=429, body={"error": "rate limited"}
+    )
+
+    def recover_after_first_backoff(_seconds: float) -> None:
+        postman_test_server.set_route(
+            "/collections/c1", method="PUT", status=200, body={"collection": {"id": "c1"}}
+        )
+
+    client = _make_client(postman_test_server, max_retries=3, sleep_fn=recover_after_first_backoff)
+
+    result = client.put("/collections/c1", {"collection": {}})
+
+    assert result == {"collection": {"id": "c1"}}
+    assert len(postman_test_server.received_paths) == 2
+
+
+def test_put_5xx_exhausts_retries_and_raises_integration_error(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/c1", method="PUT", status=503, body={"error": "unavailable"}
+    )
+    client = _make_client(postman_test_server, max_retries=2)
+
+    with pytest.raises(IntegrationError):
+        client.put("/collections/c1", {"collection": {}})
+
+    assert len(postman_test_server.received_paths) == 3  # tentativa inicial + 2 retries
+
+
+def test_put_api_key_never_appears_in_conflict_error_message(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/c1", method="PUT", status=409, body={"error": "conflict"}
+    )
+    client = _make_client(postman_test_server)
+
+    with pytest.raises(ConflictError) as exc_info:
+        client.put("/collections/c1", {"collection": {}})
+
+    assert FAKE_API_KEY not in str(exc_info.value)

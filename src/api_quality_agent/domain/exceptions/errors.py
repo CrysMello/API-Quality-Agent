@@ -22,6 +22,10 @@ class AuthenticationError(IntegrationError):
     pass
 
 
+class ConflictError(IntegrationError):
+    pass
+
+
 class ResourceNotFoundError(SelectionError):
     pass
 
