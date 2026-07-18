@@ -16,8 +16,12 @@ from api_quality_agent.domain.models.auth_type import AuthType
 from api_quality_agent.domain.models.backup_metadata import BackupMetadata
 from api_quality_agent.domain.models.backup_policy import BackupPolicy
 from api_quality_agent.domain.models.body_mode import BodyMode
+from api_quality_agent.domain.models.change_severity import ChangeSeverity
 from api_quality_agent.domain.models.collection_ref import CollectionRef
 from api_quality_agent.domain.models.collection_update_receipt import CollectionUpdateReceipt
+from api_quality_agent.domain.models.contract_change import ContractChange
+from api_quality_agent.domain.models.contract_change_type import ContractChangeType
+from api_quality_agent.domain.models.contract_snapshot import ContractSnapshot
 from api_quality_agent.domain.models.dependency_candidate import DependencyCandidate
 from api_quality_agent.domain.models.dependency_confidence import DependencyConfidence
 from api_quality_agent.domain.models.dependency_evidence_type import DependencyEvidenceType
@@ -72,6 +76,7 @@ from api_quality_agent.domain.models.schema_inference_result import SchemaInfere
 from api_quality_agent.domain.models.schema_inference_warning import SchemaInferenceWarning
 from api_quality_agent.domain.models.security_definition import SecurityDefinition
 from api_quality_agent.domain.models.selection_origin import SelectionOrigin
+from api_quality_agent.domain.models.snapshot_key import SnapshotKey
 from api_quality_agent.domain.models.strategy_warning import StrategyWarning
 from api_quality_agent.domain.models.test_failure import TestFailure
 from api_quality_agent.domain.models.test_strategy import TestStrategy
@@ -97,6 +102,7 @@ __all__ = [
     "BackupMetadata",
     "BackupPolicy",
     "BodyMode",
+    "ChangeSeverity",
     "CollectionEvent",
     "CollectionExample",
     "CollectionFolder",
@@ -104,6 +110,9 @@ __all__ = [
     "CollectionRef",
     "CollectionRequest",
     "CollectionUpdateReceipt",
+    "ContractChange",
+    "ContractChangeType",
+    "ContractSnapshot",
     "DependencyCandidate",
     "DependencyConfidence",
     "DependencyEvidenceType",
@@ -149,6 +158,7 @@ __all__ = [
     "SchemaInferenceWarning",
     "SecurityDefinition",
     "SelectionOrigin",
+    "SnapshotKey",
     "StrategyWarning",
     "TestFailure",
     "TestStrategy",

@@ -3,6 +3,7 @@ from api_quality_agent.domain.services.approval_policy import ApprovalPolicy
 from api_quality_agent.domain.services.collection_selection_service import (
     CollectionSelectionService,
 )
+from api_quality_agent.domain.services.contract_comparison_engine import ContractComparisonEngine
 from api_quality_agent.domain.services.diff_engine import DiffEngine
 from api_quality_agent.domain.services.managed_block_merger import ManagedBlockMerger
 from api_quality_agent.domain.services.managed_block_parser import ManagedBlockParser
@@ -14,6 +15,7 @@ __all__ = [
     "ApiAnalysisEngine",
     "ApprovalPolicy",
     "CollectionSelectionService",
+    "ContractComparisonEngine",
     "DiffEngine",
     "ManagedBlockMerger",
     "ManagedBlockParser",

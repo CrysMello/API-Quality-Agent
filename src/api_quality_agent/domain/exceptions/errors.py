@@ -44,3 +44,7 @@ class BackupError(ApiQualityAgentError):
 
 class BackupIntegrityError(BackupError):
     pass
+
+
+class BaselineAlreadyExistsError(ApiQualityAgentError):
+    pass

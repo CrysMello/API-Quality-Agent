@@ -6,10 +6,14 @@ from api_quality_agent.adapters.filesystem.local_backup_repository import (
     LocalBackupRepository,
     verify_backup_integrity,
 )
+from api_quality_agent.adapters.filesystem.local_snapshot_repository import (
+    LocalSnapshotRepository,
+)
 
 __all__ = [
     "InputResolver",
     "LocalArtifactRepository",
     "LocalBackupRepository",
+    "LocalSnapshotRepository",
     "verify_backup_integrity",
 ]
