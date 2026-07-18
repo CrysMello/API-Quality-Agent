@@ -30,3 +30,6 @@ reports/
 # Editors
 .vscode/
 .idea/
+
+# Arquivos locais de trabalho (não versionados)
+/local/
