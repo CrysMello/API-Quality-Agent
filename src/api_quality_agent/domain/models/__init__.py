@@ -1,12 +1,26 @@
 from api_quality_agent.domain.models.active_selection import ActiveSelection
 from api_quality_agent.domain.models.api_specification import ApiSpecification
 from api_quality_agent.domain.models.api_specification_type import ApiSpecificationType
+from api_quality_agent.domain.models.auth_source import AuthSource
+from api_quality_agent.domain.models.auth_type import AuthType
+from api_quality_agent.domain.models.body_mode import BodyMode
 from api_quality_agent.domain.models.collection_ref import CollectionRef
 from api_quality_agent.domain.models.endpoint import Endpoint
 from api_quality_agent.domain.models.execution_context import ExecutionContext
 from api_quality_agent.domain.models.execution_mode import ExecutionMode
 from api_quality_agent.domain.models.input_origin import InputOrigin
 from api_quality_agent.domain.models.media_type_definition import MediaTypeDefinition
+from api_quality_agent.domain.models.normalization_context import NormalizationContext
+from api_quality_agent.domain.models.normalization_warning import NormalizationWarning
+from api_quality_agent.domain.models.normalized_auth import NormalizedAuth
+from api_quality_agent.domain.models.normalized_body import NormalizedBody, NormalizedBodyField
+from api_quality_agent.domain.models.normalized_header import NormalizedHeader
+from api_quality_agent.domain.models.normalized_request import NormalizedRequest
+from api_quality_agent.domain.models.normalized_url import (
+    NormalizedQueryParameter,
+    NormalizedUrl,
+    NormalizedUrlVariable,
+)
 from api_quality_agent.domain.models.parameter import Parameter
 from api_quality_agent.domain.models.parameter_location import ParameterLocation
 from api_quality_agent.domain.models.postman_collection_document import PostmanCollectionDocument
@@ -28,6 +42,9 @@ __all__ = [
     "ActiveSelection",
     "ApiSpecification",
     "ApiSpecificationType",
+    "AuthSource",
+    "AuthType",
+    "BodyMode",
     "CollectionEvent",
     "CollectionExample",
     "CollectionFolder",
@@ -39,6 +56,16 @@ __all__ = [
     "ExecutionMode",
     "InputOrigin",
     "MediaTypeDefinition",
+    "NormalizationContext",
+    "NormalizationWarning",
+    "NormalizedAuth",
+    "NormalizedBody",
+    "NormalizedBodyField",
+    "NormalizedHeader",
+    "NormalizedQueryParameter",
+    "NormalizedRequest",
+    "NormalizedUrl",
+    "NormalizedUrlVariable",
     "Parameter",
     "ParameterLocation",
     "PostmanCollectionDocument",
