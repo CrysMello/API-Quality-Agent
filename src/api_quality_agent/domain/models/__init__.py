@@ -3,6 +3,7 @@ from api_quality_agent.domain.models.analysis_warning import AnalysisWarning
 from api_quality_agent.domain.models.api_analysis_result import ApiAnalysisResult
 from api_quality_agent.domain.models.api_specification import ApiSpecification
 from api_quality_agent.domain.models.api_specification_type import ApiSpecificationType
+from api_quality_agent.domain.models.approval_result import ApprovalResult
 from api_quality_agent.domain.models.assertion_definition import AssertionDefinition
 from api_quality_agent.domain.models.assertion_origin import AssertionOrigin
 from api_quality_agent.domain.models.assertion_type import AssertionType
@@ -13,6 +14,11 @@ from api_quality_agent.domain.models.collection_ref import CollectionRef
 from api_quality_agent.domain.models.dependency_candidate import DependencyCandidate
 from api_quality_agent.domain.models.dependency_confidence import DependencyConfidence
 from api_quality_agent.domain.models.dependency_evidence_type import DependencyEvidenceType
+from api_quality_agent.domain.models.diff_category import DiffCategory
+from api_quality_agent.domain.models.diff_change_type import DiffChangeType
+from api_quality_agent.domain.models.diff_entry import DiffEntry
+from api_quality_agent.domain.models.diff_result import DiffResult
+from api_quality_agent.domain.models.diff_risk_level import DiffRiskLevel
 from api_quality_agent.domain.models.endpoint import Endpoint
 from api_quality_agent.domain.models.endpoint_analysis import EndpointAnalysis
 from api_quality_agent.domain.models.execution_context import ExecutionContext
@@ -67,6 +73,7 @@ __all__ = [
     "ApiAnalysisResult",
     "ApiSpecification",
     "ApiSpecificationType",
+    "ApprovalResult",
     "AssertionDefinition",
     "AssertionOrigin",
     "AssertionType",
@@ -82,6 +89,11 @@ __all__ = [
     "DependencyCandidate",
     "DependencyConfidence",
     "DependencyEvidenceType",
+    "DiffCategory",
+    "DiffChangeType",
+    "DiffEntry",
+    "DiffResult",
+    "DiffRiskLevel",
     "Endpoint",
     "EndpointAnalysis",
     "ExecutionContext",

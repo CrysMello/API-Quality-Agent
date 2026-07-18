@@ -1,4 +1,6 @@
 from api_quality_agent.domain.services.api_analysis_engine import ApiAnalysisEngine
+from api_quality_agent.domain.services.approval_policy import ApprovalPolicy
+from api_quality_agent.domain.services.diff_engine import DiffEngine
 from api_quality_agent.domain.services.managed_block_merger import ManagedBlockMerger
 from api_quality_agent.domain.services.managed_block_parser import ManagedBlockParser
 from api_quality_agent.domain.services.postman_request_normalizer import PostmanRequestNormalizer
@@ -7,6 +9,8 @@ from api_quality_agent.domain.services.test_strategy_engine import TestStrategyE
 
 __all__ = [
     "ApiAnalysisEngine",
+    "ApprovalPolicy",
+    "DiffEngine",
     "ManagedBlockMerger",
     "ManagedBlockParser",
     "PostmanRequestNormalizer",
