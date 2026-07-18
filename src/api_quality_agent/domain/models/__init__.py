@@ -3,6 +3,9 @@ from api_quality_agent.domain.models.analysis_warning import AnalysisWarning
 from api_quality_agent.domain.models.api_analysis_result import ApiAnalysisResult
 from api_quality_agent.domain.models.api_specification import ApiSpecification
 from api_quality_agent.domain.models.api_specification_type import ApiSpecificationType
+from api_quality_agent.domain.models.assertion_definition import AssertionDefinition
+from api_quality_agent.domain.models.assertion_origin import AssertionOrigin
+from api_quality_agent.domain.models.assertion_type import AssertionType
 from api_quality_agent.domain.models.auth_source import AuthSource
 from api_quality_agent.domain.models.auth_type import AuthType
 from api_quality_agent.domain.models.body_mode import BodyMode
@@ -16,6 +19,8 @@ from api_quality_agent.domain.models.execution_context import ExecutionContext
 from api_quality_agent.domain.models.execution_mode import ExecutionMode
 from api_quality_agent.domain.models.input_origin import InputOrigin
 from api_quality_agent.domain.models.media_type_definition import MediaTypeDefinition
+from api_quality_agent.domain.models.negative_case_definition import NegativeCaseDefinition
+from api_quality_agent.domain.models.negative_case_type import NegativeCaseType
 from api_quality_agent.domain.models.normalization_context import NormalizationContext
 from api_quality_agent.domain.models.normalization_warning import NormalizationWarning
 from api_quality_agent.domain.models.normalized_auth import NormalizedAuth
@@ -46,6 +51,11 @@ from api_quality_agent.domain.models.schema_inference_policy import SchemaInfere
 from api_quality_agent.domain.models.schema_inference_result import SchemaInferenceResult
 from api_quality_agent.domain.models.schema_inference_warning import SchemaInferenceWarning
 from api_quality_agent.domain.models.security_definition import SecurityDefinition
+from api_quality_agent.domain.models.strategy_warning import StrategyWarning
+from api_quality_agent.domain.models.test_strategy import TestStrategy
+from api_quality_agent.domain.models.test_strategy_options import TestStrategyOptions
+from api_quality_agent.domain.models.variable_extraction import VariableExtraction
+from api_quality_agent.domain.models.variable_scope import VariableScope
 from api_quality_agent.domain.models.workspace_ref import WorkspaceRef
 
 __all__ = [
@@ -54,6 +64,9 @@ __all__ = [
     "ApiAnalysisResult",
     "ApiSpecification",
     "ApiSpecificationType",
+    "AssertionDefinition",
+    "AssertionOrigin",
+    "AssertionType",
     "AuthSource",
     "AuthType",
     "BodyMode",
@@ -72,6 +85,8 @@ __all__ = [
     "ExecutionMode",
     "InputOrigin",
     "MediaTypeDefinition",
+    "NegativeCaseDefinition",
+    "NegativeCaseType",
     "NormalizationContext",
     "NormalizationWarning",
     "NormalizedAuth",
@@ -93,6 +108,11 @@ __all__ = [
     "SchemaInferenceResult",
     "SchemaInferenceWarning",
     "SecurityDefinition",
+    "StrategyWarning",
+    "TestStrategy",
+    "TestStrategyOptions",
     "UnknownCollectionItem",
+    "VariableExtraction",
+    "VariableScope",
     "WorkspaceRef",
 ]
