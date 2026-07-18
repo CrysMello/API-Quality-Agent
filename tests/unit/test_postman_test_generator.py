@@ -1,9 +1,12 @@
-from api_quality_agent.domain.models import (
-    EndpointAnalysis,
-    TestStrategyOptions,
-)
+from api_quality_agent.domain.models import EndpointAnalysis, TestStrategyOptions
 from api_quality_agent.domain.services import TestStrategyEngine
-from api_quality_agent.generators import PostmanTestGenerator, is_valid_javascript_syntax
+from api_quality_agent.generators import (
+    GeneratedTestScript,
+    PostmanTestGenerator,
+    TestCategory,
+    format_test_script_preview,
+    is_valid_javascript_syntax,
+)
 
 
 def _build_endpoint(
@@ -31,76 +34,90 @@ def _build_endpoint(
     )
 
 
-# --- Snapshot do JavaScript gerado ----------------------------------------------
-
-_SNAPSHOT_SCRIPT = (
-    "// O corpo da resposta é interpretado uma única vez e reutilizado pelos testes abaixo.\n"
-    "var responseBody;\n"
-    "var responseBodyParseError = null;\n"
-    "try {\n"
-    "    responseBody = pm.response.json();\n"
-    "} catch (error) {\n"
-    "    responseBodyParseError = error;\n"
-    "}\n"
-    "\n"
-    'pm.test("Status code da resposta deve ser 200.", function () {\n'
-    "    pm.response.to.have.status(200);\n"
-    "});\n"
-    "\n"
-    'pm.test("Content-Type da resposta deve conter \'application/json\'.", function () {\n'
-    '    var actualContentType = pm.response.headers.get("Content-Type") || "";\n'
-    '    pm.expect(actualContentType).to.include("application/json");\n'
-    "});\n"
-    "\n"
-    'pm.test("O corpo da resposta deve ser um JSON válido.", function () {\n'
-    '    pm.expect(responseBodyParseError, responseBodyParseError ? String(responseBodyParseError) : "").to.be.null;\n'
-    "});\n"
-    "\n"
-    'pm.test("O corpo da resposta deve validar contra o schema esperado.", function () {\n'
-    '    pm.response.to.have.jsonSchema({"type": "object", "properties": {"id": {"type": "integer"}, "name": {"type": "string"}}, "required": ["id"]});\n'
-    "});\n"
-    "\n"
-    'pm.test("A resposta não deve conter propriedades além das declaradas no schema.", function () {\n'
-    '    var allowedProperties = ["id", "name"];\n'
-    "    var actualProperties = Object.keys(responseBody);\n"
-    "    var extraProperties = actualProperties.filter(function (key) { return allowedProperties.indexOf(key) === -1; });\n"
-    '    pm.expect(extraProperties, "Propriedades inesperadas: " + extraProperties.join(", ")).to.have.lengthOf(0);\n'
-    "});\n"
-    "\n"
-    'pm.test("O campo obrigatório \'id\' deve estar presente na resposta.", function () {\n'
-    '    pm.expect(responseBody).to.have.property("id");\n'
-    "});\n"
-    "\n"
-    'if (responseBody && typeof responseBody === "object" && Object.prototype.hasOwnProperty.call(responseBody, "id")) {\n'
-    '    pm.collectionVariables.set("id", responseBody["id"]);\n'
-    "}\n"
-)
+def _assertion_of_category(result: GeneratedTestScript, category: TestCategory):
+    return next(item for item in result.summary if item.category == category)
 
 
-def test_generated_script_matches_snapshot():
+def _summary_item(result: GeneratedTestScript, test_id: str):
+    return next(item for item in result.summary if item.test_id == test_id)
+
+
+# --- Status code com comentário --------------------------------------------------
+
+
+def test_status_code_generates_comment_and_test():
+    endpoint = _build_endpoint(response_status_codes=("200",))
+    strategy = TestStrategyEngine().build_strategy(endpoint)
+
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert "// Validação: o endpoint deve retornar HTTP 200." in result.script
+    assert 'pm.test("Status code é 200", function () {' in result.script
+    item = _assertion_of_category(result, TestCategory.STATUS_CODE)
+    assert item.test_id == "status-code-200"
+    assert item.title == "Status code é 200"
+
+
+# --- Content-Type com comentário --------------------------------------------------
+
+
+def test_content_type_generates_comment_and_test():
+    endpoint = _build_endpoint(
+        response_status_codes=("200",), response_content_types=("application/json",)
+    )
+    strategy = TestStrategyEngine().build_strategy(endpoint)
+
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert "// Validação: a resposta deve possuir Content-Type application/json." in result.script
+    assert 'pm.test("Content-Type é JSON", function () {' in result.script
+    item = _assertion_of_category(result, TestCategory.CONTENT_TYPE)
+    assert item.description == "Valida que a resposta possui Content-Type application/json."
+
+
+# --- Tempo de resposta com comentário ----------------------------------------------
+
+
+def test_response_time_generates_comment_and_test():
+    endpoint = _build_endpoint(response_status_codes=("200",))
+    strategy = TestStrategyEngine().build_strategy(
+        endpoint, options=TestStrategyOptions(max_response_time_ms=500)
+    )
+
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert "// Validação: o tempo da resposta deve ser menor que 500 ms." in result.script
+    assert 'pm.test("Tempo de resposta menor que 500 ms", function () {' in result.script
+    item = _assertion_of_category(result, TestCategory.RESPONSE_TIME)
+    assert item.source == "configuration"
+
+
+# --- Campo obrigatório com comentário -----------------------------------------------
+
+
+def test_required_field_without_known_type_generates_presence_only_test():
     endpoint = _build_endpoint(
         response_status_codes=("200",), response_content_types=("application/json",)
     )
     response_schema = {
         "type": "object",
-        "properties": {"id": {"type": "integer"}, "name": {"type": "string"}},
-        "required": ["id"],
+        "properties": {"metadata": {"type": "object"}},
+        "required": ["metadata"],
     }
-    strategy = TestStrategyEngine().build_strategy(
-        endpoint,
-        response_schema=response_schema,
-        options=TestStrategyOptions(assert_no_extra_properties=True),
-    )
+    strategy = TestStrategyEngine().build_strategy(endpoint, response_schema=response_schema)
 
-    script = PostmanTestGenerator().generate(strategy)
+    result = PostmanTestGenerator().generate(strategy)
 
-    assert script == _SNAPSHOT_SCRIPT
-
-
-# --- Objeto ----------------------------------------------------------------------
+    assert '// Validação: o campo "metadata" é obrigatório e deve existir na resposta.' in result.script
+    assert 'pm.test("Campo metadata é obrigatório", function () {' in result.script
+    item = _assertion_of_category(result, TestCategory.REQUIRED_FIELD)
+    assert item.test_id == "required-field-metadata"
 
 
-def test_object_response_generates_required_field_and_no_extra_properties():
+# --- Tipo de campo com comentário ---------------------------------------------------
+
+
+def test_required_field_with_known_type_combines_presence_and_type():
     endpoint = _build_endpoint(
         response_status_codes=("200",), response_content_types=("application/json",)
     )
@@ -109,23 +126,40 @@ def test_object_response_generates_required_field_and_no_extra_properties():
         "properties": {"id": {"type": "integer"}},
         "required": ["id"],
     }
-    strategy = TestStrategyEngine().build_strategy(
-        endpoint,
-        response_schema=response_schema,
-        options=TestStrategyOptions(assert_no_extra_properties=True),
+    strategy = TestStrategyEngine().build_strategy(endpoint, response_schema=response_schema)
+
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert '// Validação: o campo "id" é obrigatório e deve ser numérico.' in result.script
+    assert 'pm.test("Campo id é obrigatório e numérico", function () {' in result.script
+    assert '.to.have.property("id")' in result.script
+    assert '.that.is.a("number");' in result.script
+    item = _assertion_of_category(result, TestCategory.FIELD_TYPE)
+    assert item.test_id == "field-type-id-number"
+    assert item.description == 'Valida que o campo "id" possui o tipo number.'
+
+
+def test_ambiguous_field_type_falls_back_to_presence_and_generates_warning():
+    endpoint = _build_endpoint(
+        response_status_codes=("200",), response_content_types=("application/json",)
     )
+    response_schema = {
+        "type": "object",
+        "properties": {"tag": {"type": ["string", "null"]}},
+        "required": ["tag"],
+    }
+    strategy = TestStrategyEngine().build_strategy(endpoint, response_schema=response_schema)
 
-    script = PostmanTestGenerator().generate(strategy)
+    result = PostmanTestGenerator().generate(strategy)
 
-    assert 'pm.expect(responseBody).to.have.property("id");' in script
-    assert "allowedProperties" in script
-    assert 'to.be.an("array")' not in script
-
-
-# --- Array -------------------------------------------------------------------------
+    assert 'pm.test("Campo tag é obrigatório", function () {' in result.script
+    assert any(w.code == "AMBIGUOUS_FIELD_TYPE" for w in result.warnings)
 
 
-def test_array_response_generates_array_not_empty_assertion():
+# --- Array com comentário -----------------------------------------------------------
+
+
+def test_array_not_empty_generates_comment_and_test():
     endpoint = _build_endpoint(
         response_status_codes=("200",), response_content_types=("application/json",)
     )
@@ -136,85 +170,89 @@ def test_array_response_generates_array_not_empty_assertion():
         options=TestStrategyOptions(assert_array_not_empty=True),
     )
 
-    script = PostmanTestGenerator().generate(strategy)
+    result = PostmanTestGenerator().generate(strategy)
 
-    assert 'pm.expect(responseBody).to.be.an("array").that.is.not.empty;' in script
-    assert "hasOwnProperty" not in script
-    assert "allowedProperties" not in script
-
-
-# --- Sem body ----------------------------------------------------------------------
+    assert "// Validação: a resposta deve ser uma lista não vazia." in result.script
+    assert 'pm.test("Resposta contém uma lista não vazia", function () {' in result.script
+    item = _assertion_of_category(result, TestCategory.ARRAY_STRUCTURE)
+    assert item.test_id == "array-not-empty"
 
 
-def test_no_body_related_assertions_do_not_generate_parse_block():
-    endpoint = _build_endpoint(
-        source="DELETE /pets/1",
-        method="DELETE",
-        response_status_codes=("204",),
-    )
-
-    strategy = TestStrategyEngine().build_strategy(endpoint)
-    script = PostmanTestGenerator().generate(strategy)
-
-    assert "pm.response.json()" not in script
-    assert "responseBody" not in script
-    assert 'pm.test("Status code da resposta deve ser 204.", function () {' in script
+# --- Schema com comentário -----------------------------------------------------------
 
 
-# --- Status e header --------------------------------------------------------------
-
-
-def test_status_and_content_type_assertions_are_generated():
-    endpoint = _build_endpoint(
-        response_status_codes=("201",), response_content_types=("application/json",)
-    )
-
-    strategy = TestStrategyEngine().build_strategy(endpoint)
-    script = PostmanTestGenerator().generate(strategy)
-
-    assert "pm.response.to.have.status(201);" in script
-    assert 'pm.response.headers.get("Content-Type")' in script
-    assert 'to.include("application/json")' in script
-
-
-# --- Schema --------------------------------------------------------------------------
-
-
-def test_schema_assertion_embeds_exact_schema_as_json():
+def test_schema_generates_comment_and_embedded_json_schema():
     endpoint = _build_endpoint(
         response_status_codes=("200",), response_content_types=("application/json",)
     )
     response_schema = {"type": "object", "properties": {"id": {"type": "integer"}}}
-
     strategy = TestStrategyEngine().build_strategy(endpoint, response_schema=response_schema)
-    script = PostmanTestGenerator().generate(strategy)
 
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert "// Validação: o corpo da resposta deve corresponder ao schema esperado." in result.script
     assert (
         'pm.response.to.have.jsonSchema({"type": "object", "properties": {"id": {"type": "integer"}}});'
-        in script
+        in result.script
     )
+    item = _summary_item(result, "response-matches-schema")
+    assert item.category == TestCategory.JSON_SCHEMA
 
 
-# --- Extração de variável ----------------------------------------------------------
+# --- Extração de variável com comentário --------------------------------------------
 
 
-def test_variable_extraction_uses_configured_scope():
+def test_variable_extraction_generates_comment_and_review_warning():
     endpoint = _build_endpoint(
         response_status_codes=("201",), response_content_types=("application/json",)
     )
     response_schema = {"type": "object", "properties": {"id": {"type": "integer"}}}
-
     strategy = TestStrategyEngine().build_strategy(endpoint, response_schema=response_schema)
-    script = PostmanTestGenerator().generate(strategy)
 
-    assert "pm.collectionVariables.set(\"id\", responseBody[\"id\"]);" in script
-    assert 'hasOwnProperty.call(responseBody, "id")' in script
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert (
+        '// Validação: extrai o valor do campo "id" para reutilização em requests futuras.'
+        in result.script
+    )
+    assert 'pm.collectionVariables.set("id", body["id"]);' in result.script
+    item = _assertion_of_category(result, TestCategory.VARIABLE_EXTRACTION)
+    assert item.test_id == "variable-extraction-id"
+    assert any(
+        w.code == "VARIABLE_EXTRACTION_REQUIRES_REVIEW" and w.test_id == "variable-extraction-id"
+        for w in result.warnings
+    )
 
 
-# --- Required ------------------------------------------------------------------------
+# --- Comentário sem segredo -----------------------------------------------------------
 
 
-def test_required_field_with_must_have_value_generates_extra_assertion():
+def test_comments_and_summary_never_contain_sensitive_values():
+    endpoint = _build_endpoint(
+        response_status_codes=("200",), response_content_types=("application/json",)
+    )
+    response_schema = {
+        "type": "object",
+        "properties": {"token": {"type": "string"}},
+        "required": ["token"],
+    }
+    strategy = TestStrategyEngine().build_strategy(endpoint, response_schema=response_schema)
+
+    result = PostmanTestGenerator().generate(strategy)
+
+    forbidden_values = ("super-secret-token-value", "sk_live_", "password123")
+    for forbidden in forbidden_values:
+        assert forbidden not in result.script
+    for item in result.summary:
+        for forbidden in forbidden_values:
+            assert forbidden not in item.title
+            assert forbidden not in item.description
+
+
+# --- Nome do pm.test claro -----------------------------------------------------------
+
+
+def test_test_names_are_specific_not_generic():
     endpoint = _build_endpoint(
         response_status_codes=("200",), response_content_types=("application/json",)
     )
@@ -223,105 +261,51 @@ def test_required_field_with_must_have_value_generates_extra_assertion():
         "properties": {"id": {"type": "integer"}},
         "required": ["id"],
     }
+    strategy = TestStrategyEngine().build_strategy(endpoint, response_schema=response_schema)
 
-    strategy = TestStrategyEngine().build_strategy(
-        endpoint,
-        response_schema=response_schema,
-        options=TestStrategyOptions(assert_required_has_value=True),
-    )
-    script = PostmanTestGenerator().generate(strategy)
+    result = PostmanTestGenerator().generate(strategy)
 
-    assert 'pm.expect(responseBody).to.have.property("id");' in script
-    assert 'to.not.be.oneOf([null, undefined, ""])' in script
-
-
-# --- Propriedades extras ----------------------------------------------------------
+    generic_names = {"Teste 1", "Validação", "Schema", "Campo"}
+    titles = {item.title for item in result.summary}
+    assert titles.isdisjoint(generic_names)
+    for title in titles:
+        assert len(title) > 5
 
 
-def test_no_extra_properties_lists_allowed_properties_from_schema():
+# --- Correspondência entre resumo e testes / test_count ------------------------------
+
+
+def test_summary_matches_generated_tests_and_count():
     endpoint = _build_endpoint(
         response_status_codes=("200",), response_content_types=("application/json",)
     )
     response_schema = {
         "type": "object",
         "properties": {"id": {"type": "integer"}, "name": {"type": "string"}},
+        "required": ["id", "name"],
     }
-
     strategy = TestStrategyEngine().build_strategy(
         endpoint,
         response_schema=response_schema,
-        options=TestStrategyOptions(assert_no_extra_properties=True),
-    )
-    script = PostmanTestGenerator().generate(strategy)
-
-    assert 'var allowedProperties = ["id", "name"];' in script
-
-
-# --- Sintaxe válida ------------------------------------------------------------------
-
-
-def test_generated_scripts_are_syntactically_valid_javascript():
-    scenarios = []
-
-    endpoint_object = _build_endpoint(
-        response_status_codes=("200",), response_content_types=("application/json",)
-    )
-    object_schema = {
-        "type": "object",
-        "properties": {"id": {"type": "integer"}, "tags": {"type": "array"}},
-        "required": ["id"],
-    }
-    scenarios.append(
-        TestStrategyEngine().build_strategy(
-            endpoint_object,
-            response_schema=object_schema,
-            options=TestStrategyOptions(
-                assert_no_extra_properties=True,
-                assert_required_has_value=True,
-                max_response_time_ms=300,
-            ),
-        )
+        options=TestStrategyOptions(max_response_time_ms=500),
     )
 
-    endpoint_array = _build_endpoint(
-        response_status_codes=("200",), response_content_types=("application/json",)
-    )
-    array_schema = {"type": "array", "items": {"type": "string"}}
-    scenarios.append(
-        TestStrategyEngine().build_strategy(
-            endpoint_array,
-            response_schema=array_schema,
-            options=TestStrategyOptions(assert_array_not_empty=True),
-        )
-    )
+    result = PostmanTestGenerator().generate(strategy)
 
-    endpoint_no_content = _build_endpoint(
-        source="DELETE /pets/1", method="DELETE", response_status_codes=("204",)
-    )
-    scenarios.append(TestStrategyEngine().build_strategy(endpoint_no_content))
-
-    generator = PostmanTestGenerator()
-    for strategy in scenarios:
-        script = generator.generate(strategy)
-        assert is_valid_javascript_syntax(script), script
+    assert result.test_count == len(result.summary)
+    test_ids = {item.test_id for item in result.summary}
+    assert len(test_ids) == len(result.summary)
+    for item in result.summary:
+        if item.category is TestCategory.VARIABLE_EXTRACTION:
+            continue
+        assert item.title in result.script
+    assert result.script.count("pm.test(") + result.script.count("if (body") == result.test_count
 
 
-def test_syntax_validator_rejects_broken_script():
-    broken_script = 'pm.test("a", function () { pm.response.to.have.status(200); '
-
-    assert is_valid_javascript_syntax(broken_script) is False
+# --- Script e resumo determinísticos --------------------------------------------------
 
 
-def test_syntax_validator_accepts_braces_inside_string_literals():
-    script = 'var x = "{ not a real brace }";'
-
-    assert is_valid_javascript_syntax(script) is True
-
-
-# --- Idempotência da geração ---------------------------------------------------------
-
-
-def test_generation_is_idempotent_for_the_same_strategy():
+def test_script_and_summary_are_deterministic():
     endpoint = _build_endpoint(
         response_status_codes=("200",), response_content_types=("application/json",)
     )
@@ -336,19 +320,163 @@ def test_generation_is_idempotent_for_the_same_strategy():
     first = generator.generate(strategy)
     second = generator.generate(strategy)
 
-    assert first == second
+    assert first.script == second.script
+    assert first.summary == second.summary
+    assert first.warnings == second.warnings
+    assert first.test_count == second.test_count
 
 
-# --- Segurança / não conhece a API do Postman ------------------------------------------
+# --- Ausência/presença da declaração de body ------------------------------------------
 
 
-def test_generator_module_has_no_postman_adapter_dependency():
-    import api_quality_agent.generators.postman_test_generator as module
+def test_no_body_declaration_when_not_needed():
+    endpoint = _build_endpoint(source="DELETE /pets/1", method="DELETE", response_status_codes=("204",))
+    strategy = TestStrategyEngine().build_strategy(endpoint)
 
-    source = module.__file__
-    assert source is not None
-    with open(source, encoding="utf-8") as handle:
-        content = handle.read()
-    assert "adapters.postman" not in content
-    assert "requests" not in content
-    assert "httpx" not in content
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert "pm.response.json()" not in result.script
+    assert "body" not in result.script
+
+
+def test_single_body_declaration_when_multiple_tests_need_it():
+    endpoint = _build_endpoint(
+        response_status_codes=("200",), response_content_types=("application/json",)
+    )
+    response_schema = {
+        "type": "object",
+        "properties": {"id": {"type": "integer"}, "name": {"type": "string"}},
+        "required": ["id", "name"],
+    }
+    strategy = TestStrategyEngine().build_strategy(endpoint, response_schema=response_schema)
+
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert result.script.count("pm.response.json()") == 1
+    assert result.script.count("let body;") == 1
+
+
+# --- Warning para inferência incerta --------------------------------------------------
+
+
+def test_expected_status_not_defined_warning_when_status_is_ambiguous():
+    endpoint = _build_endpoint(response_status_codes=())
+    strategy = TestStrategyEngine().build_strategy(endpoint)
+
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert any(w.code == "EXPECTED_STATUS_NOT_DEFINED" for w in result.warnings)
+    assert "pm.response.to.have.status" not in result.script
+
+
+# --- Ausência de alteração na entrada --------------------------------------------------
+
+
+def test_strategy_is_not_mutated_by_generation():
+    endpoint = _build_endpoint(
+        response_status_codes=("200",), response_content_types=("application/json",)
+    )
+    response_schema = {
+        "type": "object",
+        "properties": {"id": {"type": "integer"}},
+        "required": ["id"],
+    }
+    strategy = TestStrategyEngine().build_strategy(endpoint, response_schema=response_schema)
+    original_assertions = strategy.assertions
+    original_extractions = strategy.variable_extractions
+
+    PostmanTestGenerator().generate(strategy)
+
+    assert strategy.assertions == original_assertions
+    assert strategy.variable_extractions == original_extractions
+
+
+# --- Compatibilidade com o Managed Block Merger -----------------------------------------
+
+
+def test_script_field_is_plain_string_usable_for_merge():
+    endpoint = _build_endpoint(response_status_codes=("200",))
+    strategy = TestStrategyEngine().build_strategy(endpoint)
+
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert isinstance(result.script, str)
+    assert "GeneratedTestSummaryItem" not in result.script
+    assert "GenerationWarning" not in result.script
+
+
+# --- Sintaxe válida --------------------------------------------------------------------
+
+
+def test_generated_script_is_syntactically_valid_javascript():
+    endpoint = _build_endpoint(
+        response_status_codes=("200",), response_content_types=("application/json",)
+    )
+    response_schema = {
+        "type": "object",
+        "properties": {"id": {"type": "integer"}, "tags": {"type": "array"}},
+        "required": ["id"],
+    }
+    strategy = TestStrategyEngine().build_strategy(
+        endpoint,
+        response_schema=response_schema,
+        options=TestStrategyOptions(
+            assert_no_extra_properties=True, max_response_time_ms=300
+        ),
+    )
+
+    result = PostmanTestGenerator().generate(strategy)
+
+    assert is_valid_javascript_syntax(result.script), result.script
+
+
+# --- Preview do CLI ----------------------------------------------------------------------
+
+
+def test_preview_formatter_renders_title_and_description():
+    endpoint = _build_endpoint(response_status_codes=("200",))
+    strategy = TestStrategyEngine().build_strategy(endpoint)
+    result = PostmanTestGenerator().generate(strategy)
+
+    preview = format_test_script_preview(result, request_label="GET /pets")
+
+    assert "Request: GET /pets" in preview
+    assert f"Testes que serão gerados: {result.test_count}" in preview
+    assert "1. Status code é 200" in preview
+    assert "   Valida que o endpoint retorna HTTP 200." in preview
+
+
+# --- Teste de exemplo completo (cenário do prompt) ---------------------------------------
+
+
+def test_full_example_scenario_get_users_id():
+    endpoint = _build_endpoint(
+        source="GET /users/{id}",
+        method="GET",
+        path="/users/{id}",
+        response_status_codes=("200",),
+        response_content_types=("application/json",),
+    )
+    response_schema = {
+        "type": "object",
+        "properties": {"id": {"type": "integer"}, "name": {"type": "string"}},
+        "required": ["id", "name"],
+    }
+    strategy = TestStrategyEngine().build_strategy(
+        endpoint,
+        response_schema=response_schema,
+        options=TestStrategyOptions(max_response_time_ms=500),
+    )
+
+    result = PostmanTestGenerator().generate(strategy)
+
+    titles = [item.title for item in result.summary]
+    assert "Status code é 200" in titles
+    assert "Content-Type é JSON" in titles
+    assert "Campo id é obrigatório e numérico" in titles
+    assert "Campo name é obrigatório e textual" in titles
+    assert "Tempo de resposta menor que 500 ms" in titles
+
+    assert is_valid_javascript_syntax(result.script)
+    assert result.script.count("let body;") == 1
+    assert result.test_count == len(result.summary)
