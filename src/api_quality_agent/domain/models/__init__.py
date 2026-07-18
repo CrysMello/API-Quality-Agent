@@ -71,6 +71,7 @@ from api_quality_agent.domain.models.schema_inference_policy import SchemaInfere
 from api_quality_agent.domain.models.schema_inference_result import SchemaInferenceResult
 from api_quality_agent.domain.models.schema_inference_warning import SchemaInferenceWarning
 from api_quality_agent.domain.models.security_definition import SecurityDefinition
+from api_quality_agent.domain.models.selection_origin import SelectionOrigin
 from api_quality_agent.domain.models.strategy_warning import StrategyWarning
 from api_quality_agent.domain.models.test_failure import TestFailure
 from api_quality_agent.domain.models.test_strategy import TestStrategy
@@ -147,6 +148,7 @@ __all__ = [
     "SchemaInferenceResult",
     "SchemaInferenceWarning",
     "SecurityDefinition",
+    "SelectionOrigin",
     "StrategyWarning",
     "TestFailure",
     "TestStrategy",
