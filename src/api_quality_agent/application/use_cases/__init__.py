@@ -16,6 +16,7 @@ from api_quality_agent.application.use_cases.get_effective_configuration import 
 from api_quality_agent.application.use_cases.list_collections import ListCollectionsUseCase
 from api_quality_agent.application.use_cases.list_workspaces import ListWorkspacesUseCase
 from api_quality_agent.application.use_cases.resolve_collection import ResolveCollectionUseCase
+from api_quality_agent.application.use_cases.run_collection import RunCollectionUseCase
 from api_quality_agent.application.use_cases.run_diagnostics import (
     DiagnosticCheck,
     DiagnosticReport,
@@ -41,6 +42,7 @@ __all__ = [
     "ListCollectionsUseCase",
     "ListWorkspacesUseCase",
     "ResolveCollectionUseCase",
+    "RunCollectionUseCase",
     "SelectCollectionUseCase",
     "SelectWorkspaceUseCase",
     "UpdateCollectionUseCase",

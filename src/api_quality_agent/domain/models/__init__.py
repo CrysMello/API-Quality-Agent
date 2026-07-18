@@ -30,7 +30,10 @@ from api_quality_agent.domain.models.endpoint import Endpoint
 from api_quality_agent.domain.models.endpoint_analysis import EndpointAnalysis
 from api_quality_agent.domain.models.execution_context import ExecutionContext
 from api_quality_agent.domain.models.execution_mode import ExecutionMode
+from api_quality_agent.domain.models.execution_result import ExecutionResult
 from api_quality_agent.domain.models.generated_artifact import GeneratedArtifact
+from api_quality_agent.domain.models.infrastructure_failure import InfrastructureFailure
+from api_quality_agent.domain.models.infrastructure_failure_type import InfrastructureFailureType
 from api_quality_agent.domain.models.input_origin import InputOrigin
 from api_quality_agent.domain.models.managed_block import ManagedBlock
 from api_quality_agent.domain.models.media_type_definition import MediaTypeDefinition
@@ -69,6 +72,7 @@ from api_quality_agent.domain.models.schema_inference_result import SchemaInfere
 from api_quality_agent.domain.models.schema_inference_warning import SchemaInferenceWarning
 from api_quality_agent.domain.models.security_definition import SecurityDefinition
 from api_quality_agent.domain.models.strategy_warning import StrategyWarning
+from api_quality_agent.domain.models.test_failure import TestFailure
 from api_quality_agent.domain.models.test_strategy import TestStrategy
 from api_quality_agent.domain.models.test_strategy_options import TestStrategyOptions
 from api_quality_agent.domain.models.variable_extraction import VariableExtraction
@@ -111,7 +115,10 @@ __all__ = [
     "EndpointAnalysis",
     "ExecutionContext",
     "ExecutionMode",
+    "ExecutionResult",
     "GeneratedArtifact",
+    "InfrastructureFailure",
+    "InfrastructureFailureType",
     "InputOrigin",
     "ManagedBlock",
     "MediaTypeDefinition",
@@ -141,6 +148,7 @@ __all__ = [
     "SchemaInferenceWarning",
     "SecurityDefinition",
     "StrategyWarning",
+    "TestFailure",
     "TestStrategy",
     "TestStrategyOptions",
     "UnknownCollectionItem",
