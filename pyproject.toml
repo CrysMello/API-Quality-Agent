@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "api-quality-agent"
+version = "0.1.0"
+description = "Agente de automação de qualidade para APIs (CLI)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Crys Mello" }]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.10",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+mypy_path = "src"
+explicit_package_bases = true
