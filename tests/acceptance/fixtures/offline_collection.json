@@ -1,0 +1,42 @@
+{
+  "info": {
+    "name": "Pets Offline",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Criar pet",
+      "id": "r1",
+      "request": {
+        "method": "POST",
+        "url": "https://api.exemplo.com/pets"
+      },
+      "response": [
+        {
+          "name": "ok",
+          "status": "Created",
+          "code": 201,
+          "header": [],
+          "body": "{\"id\": 1, \"name\": \"Rex\"}"
+        }
+      ]
+    },
+    {
+      "name": "Listar pets",
+      "id": "r2",
+      "request": {
+        "method": "GET",
+        "url": "https://api.exemplo.com/pets"
+      },
+      "response": [
+        {
+          "name": "ok",
+          "status": "OK",
+          "code": 200,
+          "header": [],
+          "body": "[{\"id\": 1, \"name\": \"Rex\"}]"
+        }
+      ]
+    }
+  ]
+}
