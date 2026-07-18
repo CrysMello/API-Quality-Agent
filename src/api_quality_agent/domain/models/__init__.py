@@ -13,8 +13,11 @@ from api_quality_agent.domain.models.assertion_origin import AssertionOrigin
 from api_quality_agent.domain.models.assertion_type import AssertionType
 from api_quality_agent.domain.models.auth_source import AuthSource
 from api_quality_agent.domain.models.auth_type import AuthType
+from api_quality_agent.domain.models.backup_metadata import BackupMetadata
+from api_quality_agent.domain.models.backup_policy import BackupPolicy
 from api_quality_agent.domain.models.body_mode import BodyMode
 from api_quality_agent.domain.models.collection_ref import CollectionRef
+from api_quality_agent.domain.models.collection_update_receipt import CollectionUpdateReceipt
 from api_quality_agent.domain.models.dependency_candidate import DependencyCandidate
 from api_quality_agent.domain.models.dependency_confidence import DependencyConfidence
 from api_quality_agent.domain.models.dependency_evidence_type import DependencyEvidenceType
@@ -86,6 +89,8 @@ __all__ = [
     "AssertionType",
     "AuthSource",
     "AuthType",
+    "BackupMetadata",
+    "BackupPolicy",
     "BodyMode",
     "CollectionEvent",
     "CollectionExample",
@@ -93,6 +98,7 @@ __all__ = [
     "CollectionItem",
     "CollectionRef",
     "CollectionRequest",
+    "CollectionUpdateReceipt",
     "DependencyCandidate",
     "DependencyConfidence",
     "DependencyEvidenceType",

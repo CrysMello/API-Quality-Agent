@@ -1,6 +1,10 @@
 from typing import Protocol, runtime_checkable
 
-from api_quality_agent.domain.models import CollectionRef, PostmanCollectionDocument
+from api_quality_agent.domain.models import (
+    CollectionRef,
+    CollectionUpdateReceipt,
+    PostmanCollectionDocument,
+)
 
 
 @runtime_checkable
@@ -9,4 +13,6 @@ class CollectionRepository(Protocol):
 
     def get(self, collection_id: str) -> PostmanCollectionDocument: ...
 
-    def update(self, collection_id: str, document: PostmanCollectionDocument) -> str: ...
+    def update(
+        self, collection_id: str, document: PostmanCollectionDocument
+    ) -> CollectionUpdateReceipt: ...

@@ -27,6 +27,12 @@ htmlcov/
 artifacts/
 reports/
 
+# Backups locais de Collections (dados sensíveis: podem conter auth/tokens
+# preservados integralmente da Collection original — nunca versionar)
+backups/
+*.backup.json
+*_original_collection.json
+
 # Editors
 .vscode/
 .idea/

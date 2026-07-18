@@ -189,13 +189,40 @@ def test_put_sends_json_body_with_content_type_and_returns_parsed_response(postm
     )
     client = _make_client(postman_test_server)
 
-    result = client.put("/collections/c1", {"collection": {"info": {"name": "Col"}}})
+    response = client.put("/collections/c1", {"collection": {"info": {"name": "Col"}}})
 
-    assert result == {"collection": {"id": "c1"}}
+    assert response.body == {"collection": {"id": "c1"}}
+    assert response.status_code == 200
     assert postman_test_server.received_methods[0] == "PUT"
     assert postman_test_server.received_bodies[0] == {"collection": {"info": {"name": "Col"}}}
     assert postman_test_server.received_headers[0]["Content-Type"] == "application/json"
     assert postman_test_server.received_headers[0]["X-Api-Key"] == FAKE_API_KEY
+
+
+def test_put_returns_request_id_header_when_present(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/c1",
+        method="PUT",
+        status=200,
+        body={"collection": {"id": "c1"}},
+        extra_headers={"X-Request-Id": "req-123"},
+    )
+    client = _make_client(postman_test_server)
+
+    response = client.put("/collections/c1", {"collection": {}})
+
+    assert response.request_id == "req-123"
+
+
+def test_put_request_id_is_none_when_header_absent(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/c1", method="PUT", status=200, body={"collection": {"id": "c1"}}
+    )
+    client = _make_client(postman_test_server)
+
+    response = client.put("/collections/c1", {"collection": {}})
+
+    assert response.request_id is None
 
 
 def test_put_401_raises_authentication_error_without_retry(postman_test_server):
@@ -234,9 +261,9 @@ def test_put_429_retries_and_succeeds_when_a_later_attempt_works(postman_test_se
 
     client = _make_client(postman_test_server, max_retries=3, sleep_fn=recover_after_first_backoff)
 
-    result = client.put("/collections/c1", {"collection": {}})
+    response = client.put("/collections/c1", {"collection": {}})
 
-    assert result == {"collection": {"id": "c1"}}
+    assert response.body == {"collection": {"id": "c1"}}
     assert len(postman_test_server.received_paths) == 2
 
 

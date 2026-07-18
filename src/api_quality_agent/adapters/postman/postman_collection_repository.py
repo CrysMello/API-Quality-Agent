@@ -1,8 +1,13 @@
+import hashlib
 import json
 
 from api_quality_agent.adapters.postman.postman_api_client import PostmanApiClient
 from api_quality_agent.domain.exceptions import IntegrationError
-from api_quality_agent.domain.models import CollectionRef, PostmanCollectionDocument
+from api_quality_agent.domain.models import (
+    CollectionRef,
+    CollectionUpdateReceipt,
+    PostmanCollectionDocument,
+)
 from api_quality_agent.domain.policies import ensure_non_empty_id
 from api_quality_agent.parsers import PostmanCollectionParser, PostmanCollectionSerializer
 
@@ -54,13 +59,22 @@ class PostmanCollectionRepository:
             json.dumps(raw_collection), source_name=f"postman:{collection_id}"
         )
 
-    def update(self, collection_id: str, document: PostmanCollectionDocument) -> str:
+    def update(
+        self, collection_id: str, document: PostmanCollectionDocument
+    ) -> CollectionUpdateReceipt:
         ensure_non_empty_id(collection_id, "collection_id")
 
         body = {"collection": self._serializer.serialize(document)}
-        payload = self._client.put(f"/collections/{collection_id}", body)
+        # Hash calculado sobre os mesmos bytes que serão enviados (o cliente
+        # serializa `body` de forma determinística), permitindo comprovar que
+        # a mesma entrada sempre produz o mesmo payload, sem persistir o
+        # documento em si no resultado.
+        document_hash = hashlib.sha256(json.dumps(body).encode("utf-8")).hexdigest()
 
-        raw_collection = payload.get("collection") if isinstance(payload, dict) else None
+        response = self._client.put(f"/collections/{collection_id}", body)
+
+        response_body = response.body
+        raw_collection = response_body.get("collection") if isinstance(response_body, dict) else None
         if not isinstance(raw_collection, dict):
             raise IntegrationError(
                 "Resposta inválida da API do Postman ao atualizar a Collection."
@@ -72,4 +86,10 @@ class PostmanCollectionRepository:
                 "Resposta inválida da API do Postman ao atualizar a Collection "
                 "(identificador ausente)."
             )
-        return confirmed_id
+
+        return CollectionUpdateReceipt(
+            confirmed_collection_id=confirmed_id,
+            status_code=response.status_code,
+            request_id=response.request_id,
+            document_hash=document_hash,
+        )

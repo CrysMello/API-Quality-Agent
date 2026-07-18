@@ -11,6 +11,7 @@ class _Route:
     status: int
     body: Any
     delay: float = 0.0
+    extra_headers: dict[str, str] | None = None
 
 
 class _RoutedRequestHandler(http.server.BaseHTTPRequestHandler):
@@ -41,9 +42,11 @@ class _RoutedRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if route.delay:
             time.sleep(route.delay)
-        self._write(route.status, route.body)
+        self._write(route.status, route.body, extra_headers=route.extra_headers)
 
-    def _write(self, status: int, body: Any) -> None:
+    def _write(
+        self, status: int, body: Any, *, extra_headers: dict[str, str] | None = None
+    ) -> None:
         if isinstance(body, (bytes, bytearray)):
             payload = bytes(body)
         elif isinstance(body, str):
@@ -54,6 +57,8 @@ class _RoutedRequestHandler(http.server.BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        for name, value in (extra_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -96,9 +101,13 @@ class PostmanTestServer:
         status: int = 200,
         body: Any = None,
         delay: float = 0.0,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         self.routes[(method, path)] = _Route(
-            status=status, body=body if body is not None else {}, delay=delay
+            status=status,
+            body=body if body is not None else {},
+            delay=delay,
+            extra_headers=extra_headers,
         )
 
     def set_raw_route(

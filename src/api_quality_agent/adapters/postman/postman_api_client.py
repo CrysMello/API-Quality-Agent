@@ -2,6 +2,8 @@ import json
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from dataclasses import dataclass
+from email.message import Message
 from time import sleep as _default_sleep
 from typing import Any, NoReturn
 
@@ -19,10 +21,26 @@ DEFAULT_MAX_RETRIES = 2
 DEFAULT_RETRY_BACKOFF_SECONDS = 0.5
 
 _TRANSIENT_STATUS_CODES = frozenset({429})
+_REQUEST_ID_HEADER_CANDIDATES = ("X-Request-Id", "X-Request-ID", "Postman-Request-Id")
+
+
+@dataclass(frozen=True)
+class PostmanHttpResponse:
+    body: Any
+    status_code: int
+    request_id: str | None
 
 
 class _TransientRequestError(Exception):
     pass
+
+
+def _extract_request_id(headers: Message) -> str | None:
+    for name in _REQUEST_ID_HEADER_CANDIDATES:
+        value = headers.get(name)
+        if value:
+            return value
+    return None
 
 
 class PostmanApiClient:
@@ -45,12 +63,14 @@ class PostmanApiClient:
         self._sleep_fn = sleep_fn
 
     def get(self, path: str) -> Any:
-        return self._request("GET", path)
+        return self._request("GET", path).body
 
-    def put(self, path: str, body: dict[str, Any]) -> Any:
+    def put(self, path: str, body: dict[str, Any]) -> PostmanHttpResponse:
         return self._request("PUT", path, body=body)
 
-    def _request(self, method: str, path: str, *, body: dict[str, Any] | None = None) -> Any:
+    def _request(
+        self, method: str, path: str, *, body: dict[str, Any] | None = None
+    ) -> PostmanHttpResponse:
         url = f"{self._base_url}{path}"
         attempt = 0
         while True:
@@ -70,7 +90,7 @@ class PostmanApiClient:
 
     def _perform_request(
         self, url: str, *, method: str = "GET", body: dict[str, Any] | None = None
-    ) -> Any:
+    ) -> PostmanHttpResponse:
         headers = {"X-Api-Key": self._api_key, "Accept": "application/json"}
         data: bytes | None = None
         if body is not None:
@@ -81,6 +101,8 @@ class PostmanApiClient:
         try:
             with urllib.request.urlopen(request, timeout=self._timeout_seconds) as response:
                 raw_body = response.read()
+                status_code = response.status
+                request_id = _extract_request_id(response.headers)
         except urllib.error.HTTPError as exc:
             self._handle_http_error(exc)
         except TimeoutError as exc:
@@ -88,7 +110,10 @@ class PostmanApiClient:
         except urllib.error.URLError as exc:
             raise _TransientRequestError(f"Falha de rede: {exc.reason}") from exc
 
-        return self._parse_json_body(raw_body)
+        parsed_body = self._parse_json_body(raw_body)
+        return PostmanHttpResponse(
+            body=parsed_body, status_code=status_code, request_id=request_id
+        )
 
     def _handle_http_error(self, exc: urllib.error.HTTPError) -> NoReturn:
         status = exc.code

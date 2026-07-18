@@ -121,12 +121,42 @@ def test_update_sends_serialized_collection_and_returns_confirmed_id(postman_tes
         }
     )
 
-    confirmed_id = repository.update("123-c1", document)
+    receipt = repository.update("123-c1", document)
 
-    assert confirmed_id == "123-c1"
+    assert receipt.confirmed_collection_id == "123-c1"
+    assert receipt.status_code == 200
+    assert receipt.request_id is None
+    assert len(receipt.document_hash) == 64  # sha256 hex digest
     sent_body = postman_test_server.received_bodies[0]
     assert sent_body["collection"]["info"]["name"] == "Col"
     assert sent_body["collection"]["item"][0]["name"] == "Ping"
+
+
+def test_update_document_hash_is_deterministic_for_the_same_document(postman_test_server):
+    postman_test_server.set_route(
+        "/collections/123-c1",
+        method="PUT",
+        status=200,
+        body={"collection": {"id": "123-c1"}},
+    )
+    repository = _make_repository(postman_test_server)
+    document = _parse_document(
+        {
+            "info": {
+                "name": "Col",
+                "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+            },
+            "item": [{"name": "Ping", "request": {"method": "GET", "url": "https://x/y"}}],
+        }
+    )
+
+    first = repository.update("123-c1", document)
+    second = repository.update("123-c1", document)
+
+    # Mesma entrada -> mesmo payload -> mesmo hash: é essa a garantia de
+    # idempotência do PUT, não a igualdade de toda a execução (que pode
+    # variar em request_id, por exemplo).
+    assert first.document_hash == second.document_hash
 
 
 def test_update_raises_for_invalid_response_shape(postman_test_server):

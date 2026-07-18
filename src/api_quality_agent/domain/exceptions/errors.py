@@ -36,3 +36,11 @@ class AmbiguousResourceError(SelectionError):
 
 class UpdateNotApprovedError(ApiQualityAgentError):
     pass
+
+
+class BackupError(ApiQualityAgentError):
+    pass
+
+
+class BackupIntegrityError(BackupError):
+    pass
