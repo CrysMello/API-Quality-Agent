@@ -11,6 +11,9 @@ requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Crys Mello" }]
 
+[project.scripts]
+api-quality-agent = "api_quality_agent.cli.main:run"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
