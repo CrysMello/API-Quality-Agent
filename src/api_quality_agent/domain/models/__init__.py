@@ -18,7 +18,10 @@ from api_quality_agent.domain.models.endpoint_analysis import EndpointAnalysis
 from api_quality_agent.domain.models.execution_context import ExecutionContext
 from api_quality_agent.domain.models.execution_mode import ExecutionMode
 from api_quality_agent.domain.models.input_origin import InputOrigin
+from api_quality_agent.domain.models.managed_block import ManagedBlock
 from api_quality_agent.domain.models.media_type_definition import MediaTypeDefinition
+from api_quality_agent.domain.models.merge_action import MergeAction
+from api_quality_agent.domain.models.merge_result import MergeResult
 from api_quality_agent.domain.models.negative_case_definition import NegativeCaseDefinition
 from api_quality_agent.domain.models.negative_case_type import NegativeCaseType
 from api_quality_agent.domain.models.normalization_context import NormalizationContext
@@ -84,7 +87,10 @@ __all__ = [
     "ExecutionContext",
     "ExecutionMode",
     "InputOrigin",
+    "ManagedBlock",
     "MediaTypeDefinition",
+    "MergeAction",
+    "MergeResult",
     "NegativeCaseDefinition",
     "NegativeCaseType",
     "NormalizationContext",

@@ -17,6 +17,11 @@ from api_quality_agent.domain.exceptions.input_errors import (
     InvalidJsonError,
     UnsupportedInputExtensionError,
 )
+from api_quality_agent.domain.exceptions.managed_block_errors import (
+    CorruptedManagedBlockError,
+    DuplicateManagedBlockError,
+    UnclosedManagedBlockError,
+)
 from api_quality_agent.domain.exceptions.postman_collection_errors import (
     InvalidPostmanCollectionError,
 )
@@ -31,6 +36,8 @@ __all__ = [
     "ApiQualityAgentError",
     "AuthenticationError",
     "ConfigurationError",
+    "CorruptedManagedBlockError",
+    "DuplicateManagedBlockError",
     "EmptyInputError",
     "InputEncodingError",
     "InputError",
@@ -42,6 +49,7 @@ __all__ = [
     "InvalidPostmanCollectionError",
     "ResourceNotFoundError",
     "SelectionError",
+    "UnclosedManagedBlockError",
     "UnresolvedReferenceError",
     "UnsupportedInputExtensionError",
     "UnsupportedSpecificationVersionError",
