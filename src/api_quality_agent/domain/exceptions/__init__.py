@@ -17,6 +17,9 @@ from api_quality_agent.domain.exceptions.input_errors import (
     InvalidJsonError,
     UnsupportedInputExtensionError,
 )
+from api_quality_agent.domain.exceptions.postman_collection_errors import (
+    InvalidPostmanCollectionError,
+)
 from api_quality_agent.domain.exceptions.specification_errors import (
     InvalidApiSpecificationError,
     UnresolvedReferenceError,
@@ -36,6 +39,7 @@ __all__ = [
     "IntegrationError",
     "InvalidApiSpecificationError",
     "InvalidJsonError",
+    "InvalidPostmanCollectionError",
     "ResourceNotFoundError",
     "SelectionError",
     "UnresolvedReferenceError",
