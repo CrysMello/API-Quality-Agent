@@ -42,6 +42,9 @@ from api_quality_agent.domain.models.postman_collection_items import (
 from api_quality_agent.domain.models.request_definition import RequestDefinition
 from api_quality_agent.domain.models.resolved_input import ResolvedInput
 from api_quality_agent.domain.models.response_definition import ResponseDefinition
+from api_quality_agent.domain.models.schema_inference_policy import SchemaInferencePolicy
+from api_quality_agent.domain.models.schema_inference_result import SchemaInferenceResult
+from api_quality_agent.domain.models.schema_inference_warning import SchemaInferenceWarning
 from api_quality_agent.domain.models.security_definition import SecurityDefinition
 from api_quality_agent.domain.models.workspace_ref import WorkspaceRef
 
@@ -86,6 +89,9 @@ __all__ = [
     "RequestDefinition",
     "ResolvedInput",
     "ResponseDefinition",
+    "SchemaInferencePolicy",
+    "SchemaInferenceResult",
+    "SchemaInferenceWarning",
     "SecurityDefinition",
     "UnknownCollectionItem",
     "WorkspaceRef",
