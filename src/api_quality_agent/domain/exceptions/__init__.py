@@ -17,6 +17,11 @@ from api_quality_agent.domain.exceptions.input_errors import (
     InvalidJsonError,
     UnsupportedInputExtensionError,
 )
+from api_quality_agent.domain.exceptions.specification_errors import (
+    InvalidApiSpecificationError,
+    UnresolvedReferenceError,
+    UnsupportedSpecificationVersionError,
+)
 
 __all__ = [
     "AmbiguousResourceError",
@@ -29,9 +34,12 @@ __all__ = [
     "InputFileNotFoundError",
     "InputSizeLimitExceededError",
     "IntegrationError",
+    "InvalidApiSpecificationError",
     "InvalidJsonError",
     "ResourceNotFoundError",
     "SelectionError",
+    "UnresolvedReferenceError",
     "UnsupportedInputExtensionError",
+    "UnsupportedSpecificationVersionError",
     "UpdateNotApprovedError",
 ]

@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Crys Mello" }]
+dependencies = [
+    "PyYAML>=6.0",
+]
 
 [project.scripts]
 api-quality-agent = "api_quality_agent.cli.main:run"
@@ -18,6 +21,7 @@ api-quality-agent = "api_quality_agent.cli.main:run"
 dev = [
     "pytest>=8.0",
     "mypy>=1.10",
+    "types-PyYAML>=6.0",
 ]
 
 [tool.setuptools.packages.find]
