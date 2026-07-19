@@ -14,7 +14,11 @@ from pathlib import Path
 import pytest
 
 from api_quality_agent.adapters.config import FileSelectionRepository
-from api_quality_agent.adapters.filesystem import LocalArtifactRepository, LocalBackupRepository
+from api_quality_agent.adapters.filesystem import (
+    JsonExecutionResultRepository,
+    LocalArtifactRepository,
+    LocalBackupRepository,
+)
 from api_quality_agent.adapters.newman import NewmanAdapter
 from api_quality_agent.adapters.postman import PostmanApiClient
 from api_quality_agent.cli import bootstrap
@@ -167,6 +171,7 @@ def cli_env(monkeypatch, tmp_path: Path, postman_test_server):
     selection_path = tmp_path / "selection.json"
     artifacts_path = tmp_path / "artifacts"
     backups_path = tmp_path / "backups"
+    execution_results_path = tmp_path / "artifacts"
 
     monkeypatch.setattr(bootstrap, "PostmanApiClient", _fake_client)
     monkeypatch.setattr(
@@ -177,6 +182,11 @@ def cli_env(monkeypatch, tmp_path: Path, postman_test_server):
     )
     monkeypatch.setattr(
         bootstrap, "LocalBackupRepository", lambda: LocalBackupRepository(backups_path)
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "JsonExecutionResultRepository",
+        lambda: JsonExecutionResultRepository(execution_results_path),
     )
 
     return postman_test_server

@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 from conftest import (
     COLLECTION_A_ID,
@@ -367,3 +370,125 @@ def test_run_never_prints_raw_test_failure_message_with_secret(
     captured = capsys.readouterr()
     assert "segredo-super-sensivel" not in captured.out
     assert "segredo-super-sensivel" not in captured.err
+
+
+# --- Persistência do resultado (result.json) ----------------------------------------------------------------
+
+
+def _find_result_json(tmp_path: Path) -> Path:
+    matches = list(tmp_path.glob("artifacts/run_*/result.json"))
+    assert len(matches) == 1, f"esperado exatamente 1 result.json, achei {matches}"
+    return matches[0]
+
+
+def test_run_success_persists_result_json(cli_env, selected_workspace, fake_newman, monkeypatch, tmp_path, capsys):
+    configure_server(cli_env)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+
+    exit_code = main(["run", "--collection-id", COLLECTION_A_ID])
+
+    assert exit_code == SUCCESS
+    result_path = _find_result_json(tmp_path)
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["success"] is True
+    assert payload["collection"] == {"id": COLLECTION_A_ID, "name": COLLECTION_A_NAME}
+    assert payload["summary"]["failed"] == 0
+    assert payload["infrastructure_failure"] is None
+    out = capsys.readouterr().out
+    assert "Result saved to:" in out
+    assert str(result_path) in out
+
+
+def test_run_with_test_failures_also_persists_result_json(
+    cli_env, selected_workspace, fake_newman, monkeypatch, tmp_path
+):
+    configure_server(cli_env)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "with_test_failures")
+
+    exit_code = main(["run", "--collection-id", COLLECTION_A_ID])
+
+    assert exit_code == FUNCTIONAL_FAILURE
+    result_path = _find_result_json(tmp_path)
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    assert payload["success"] is False
+    assert payload["summary"]["failed"] == 1
+
+
+def test_run_infrastructure_failure_does_not_persist_result_json(
+    cli_env, selected_workspace, tmp_path
+):
+    configure_server(cli_env)
+
+    exit_code = main(
+        ["run", "--collection-id", COLLECTION_A_ID, "--newman-executable", "newman-que-nao-existe"]
+    )
+
+    assert exit_code == INTEGRATION_FAILURE
+    assert list(tmp_path.glob("artifacts/run_*/result.json")) == []
+
+
+def test_run_two_executions_produce_distinct_result_files(
+    cli_env, selected_workspace, fake_newman, monkeypatch, tmp_path
+):
+    configure_server(cli_env)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+
+    main(["run", "--collection-id", COLLECTION_A_ID])
+    main(["run", "--collection-id", COLLECTION_A_ID])
+
+    matches = list(tmp_path.glob("artifacts/run_*/result.json"))
+    assert len(matches) == 2
+    assert matches[0] != matches[1]
+
+
+def test_run_persisted_json_never_contains_api_key(
+    cli_env, selected_workspace, fake_newman, monkeypatch, tmp_path
+):
+    configure_server(cli_env)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+
+    main(["run", "--collection-id", COLLECTION_A_ID])
+
+    result_path = _find_result_json(tmp_path)
+    assert FAKE_API_KEY not in result_path.read_text(encoding="utf-8")
+
+
+def test_run_write_failure_does_not_change_the_test_outcome_exit_code(
+    cli_env, selected_workspace, fake_newman, monkeypatch, capsys
+):
+    # A execução dos testes e a persistência são responsabilidades
+    # distintas: mesmo se a gravação do result.json falhar, o exit code
+    # continua refletindo o resultado real dos testes (sucesso aqui).
+    configure_server(cli_env)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+
+    class _FailingRepository:
+        def save(self, **_kwargs):
+            raise OSError("disco cheio (simulado)")
+
+    monkeypatch.setattr(bootstrap, "JsonExecutionResultRepository", lambda: _FailingRepository())
+
+    exit_code = main(["run", "--collection-id", COLLECTION_A_ID])
+
+    assert exit_code == SUCCESS
+    captured = capsys.readouterr()
+    assert "Execution finished successfully." in captured.out
+    assert "não foi possível salvar" in captured.err.lower()
+
+
+def test_run_write_failure_with_test_failures_still_returns_functional_failure(
+    cli_env, selected_workspace, fake_newman, monkeypatch, capsys
+):
+    configure_server(cli_env)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "with_test_failures")
+
+    class _FailingRepository:
+        def save(self, **_kwargs):
+            raise OSError("disco cheio (simulado)")
+
+    monkeypatch.setattr(bootstrap, "JsonExecutionResultRepository", lambda: _FailingRepository())
+
+    exit_code = main(["run", "--collection-id", COLLECTION_A_ID])
+
+    assert exit_code == FUNCTIONAL_FAILURE
+    assert "não foi possível salvar" in capsys.readouterr().err.lower()

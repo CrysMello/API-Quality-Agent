@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from api_quality_agent.adapters.config import FileSelectionRepository
 from api_quality_agent.adapters.filesystem import (
     InputResolver,
+    JsonExecutionResultRepository,
     LocalArtifactRepository,
     LocalBackupRepository,
 )
@@ -20,6 +21,7 @@ from api_quality_agent.application.use_cases import (
     GetCurrentWorkspaceUseCase,
     ListCollectionsUseCase,
     ListWorkspacesUseCase,
+    PersistExecutionResultUseCase,
     ResolveCollectionUseCase,
     RunCollectionUseCase,
     SelectWorkspaceUseCase,
@@ -42,6 +44,7 @@ from api_quality_agent.ports.outbound import (
     BackupRepository,
     CollectionRepository,
     CollectionRunner,
+    ExecutionResultRepository,
     SelectionRepository,
     WorkspaceRepository,
 )
@@ -67,6 +70,7 @@ class CliContext:
     select_workspace_use_case: SelectWorkspaceUseCase
     update_use_case: UpdateCollectionUseCase
     run_use_case: RunCollectionUseCase
+    persist_execution_result_use_case: PersistExecutionResultUseCase
 
 
 def _build_orchestrator() -> AgentOrchestrator:
@@ -87,6 +91,7 @@ def build_context(
     backup_repository: BackupRepository | None = None,
     collection_runner: CollectionRunner | None = None,
     newman_executable: str | None = None,
+    execution_result_repository: ExecutionResultRepository | None = None,
 ) -> CliContext:
     api_key = os.environ.get(POSTMAN_API_KEY_ENV_VAR)
     if not api_key:
@@ -139,6 +144,9 @@ def build_context(
             resolve_collection_use_case,
             collection_repository,
             collection_runner or NewmanAdapter(newman_executable=_resolve_newman_executable(newman_executable)),
+        ),
+        persist_execution_result_use_case=PersistExecutionResultUseCase(
+            execution_result_repository or JsonExecutionResultRepository()
         ),
     )
 

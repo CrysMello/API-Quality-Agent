@@ -1,4 +1,5 @@
 import argparse
+import sys
 from datetime import datetime
 
 from api_quality_agent.cli import bootstrap, collection_selection
@@ -58,6 +59,14 @@ def _handle_run(args: argparse.Namespace) -> int:
         return INTEGRATION_FAILURE
 
     _print_summary(workspace_ref, selected.name, result, started_at, finished_at)
+    _persist_result(
+        context,
+        result,
+        collection_id=selected.id,
+        collection_name=selected.name,
+        started_at=started_at,
+        finished_at=finished_at,
+    )
 
     if result.success:
         print("\nExecution finished successfully.")
@@ -65,6 +74,34 @@ def _handle_run(args: argparse.Namespace) -> int:
 
     print("\nExecution finished with test failures.")
     return FUNCTIONAL_FAILURE
+
+
+def _persist_result(
+    context: bootstrap.CliContext,
+    result: ExecutionResult,
+    *,
+    collection_id: str,
+    collection_name: str,
+    started_at: datetime,
+    finished_at: datetime,
+) -> None:
+    # A execução dos testes e a persistência do resultado são
+    # responsabilidades distintas: uma falha ao gravar o result.json nunca
+    # transforma uma execução bem-sucedida (ou com falhas de teste) em erro
+    # de infraestrutura — só é comunicada como um aviso à parte.
+    try:
+        location = context.persist_execution_result_use_case.execute(
+            result,
+            collection_id=collection_id,
+            collection_name=collection_name,
+            started_at=started_at,
+            finished_at=finished_at,
+        )
+    except Exception as exc:
+        print(f"\nAviso: não foi possível salvar o resultado da execução: {exc}", file=sys.stderr)
+        return
+
+    print(f"\nResult saved to:\n  {location.path}")
 
 
 def _print_summary(
