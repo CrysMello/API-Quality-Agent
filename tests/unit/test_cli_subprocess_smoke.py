@@ -38,6 +38,7 @@ def test_root_help_exits_zero_and_lists_subcommands():
     assert "list" in result.stdout
     assert "generate" in result.stdout
     assert "update" in result.stdout
+    assert "run" in result.stdout
     assert "version" in result.stdout
 
 
@@ -79,6 +80,15 @@ def test_update_help_exits_zero_and_documents_flags():
     assert "--collection-id" in result.stdout
     assert "--collection-name" in result.stdout
     assert "--yes" in result.stdout
+
+
+def test_run_help_exits_zero_and_documents_flags():
+    result = _run_cli("run", "--help")
+
+    assert result.returncode == 0
+    assert "--collection-id" in result.stdout
+    assert "--collection-name" in result.stdout
+    assert "--newman-executable" in result.stdout
 
 
 def test_workspace_help_exits_zero_and_lists_subcommands():
@@ -129,6 +139,13 @@ def test_workspace_select_without_api_key_fails_fast_without_network(no_api_key_
 
 def test_update_without_api_key_fails_fast_without_network(no_api_key_env):
     result = _run_cli("update", "--collection-id", "qualquer", env=no_api_key_env)
+
+    assert result.returncode == 2
+    assert "POSTMAN_API_KEY" in result.stderr
+
+
+def test_run_without_api_key_fails_fast_without_network(no_api_key_env):
+    result = _run_cli("run", "--collection-id", "qualquer", env=no_api_key_env)
 
     assert result.returncode == 2
     assert "POSTMAN_API_KEY" in result.stderr

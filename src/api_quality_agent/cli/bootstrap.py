@@ -7,6 +7,7 @@ from api_quality_agent.adapters.filesystem import (
     LocalArtifactRepository,
     LocalBackupRepository,
 )
+from api_quality_agent.adapters.newman import DEFAULT_NEWMAN_EXECUTABLE, NewmanAdapter
 from api_quality_agent.adapters.postman import (
     PostmanApiClient,
     PostmanCollectionRepository,
@@ -20,6 +21,7 @@ from api_quality_agent.application.use_cases import (
     ListCollectionsUseCase,
     ListWorkspacesUseCase,
     ResolveCollectionUseCase,
+    RunCollectionUseCase,
     SelectWorkspaceUseCase,
     UpdateCollectionUseCase,
 )
@@ -39,11 +41,13 @@ from api_quality_agent.ports.outbound import (
     ArtifactRepository,
     BackupRepository,
     CollectionRepository,
+    CollectionRunner,
     SelectionRepository,
     WorkspaceRepository,
 )
 
 POSTMAN_API_KEY_ENV_VAR = "POSTMAN_API_KEY"
+NEWMAN_EXECUTABLE_ENV_VAR = "NEWMAN_EXECUTABLE"
 
 
 @dataclass
@@ -62,6 +66,7 @@ class CliContext:
     list_workspaces_use_case: ListWorkspacesUseCase
     select_workspace_use_case: SelectWorkspaceUseCase
     update_use_case: UpdateCollectionUseCase
+    run_use_case: RunCollectionUseCase
 
 
 def _build_orchestrator() -> AgentOrchestrator:
@@ -80,6 +85,8 @@ def build_context(
     artifact_repository: ArtifactRepository | None = None,
     selection_repository: SelectionRepository | None = None,
     backup_repository: BackupRepository | None = None,
+    collection_runner: CollectionRunner | None = None,
+    newman_executable: str | None = None,
 ) -> CliContext:
     api_key = os.environ.get(POSTMAN_API_KEY_ENV_VAR)
     if not api_key:
@@ -127,7 +134,21 @@ def build_context(
         update_use_case=UpdateCollectionUseCase(
             collection_repository, backup_repository or LocalBackupRepository()
         ),
+        run_use_case=RunCollectionUseCase(
+            get_current_workspace_use_case,
+            resolve_collection_use_case,
+            collection_repository,
+            collection_runner or NewmanAdapter(newman_executable=_resolve_newman_executable(newman_executable)),
+        ),
     )
+
+
+def _resolve_newman_executable(cli_value: str | None) -> str:
+    # Precedência: flag --newman-executable > variável de ambiente
+    # NEWMAN_EXECUTABLE > "newman" (padrão do NewmanAdapter). Nenhuma
+    # tentativa de localizar o executável automaticamente (ex.: resolver
+    # .ps1 para .cmd no Windows) — só essas três fontes explícitas.
+    return cli_value or os.environ.get(NEWMAN_EXECUTABLE_ENV_VAR) or DEFAULT_NEWMAN_EXECUTABLE
 
 
 @dataclass

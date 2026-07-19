@@ -8,15 +8,19 @@ nenhum código de produção é alterado para viabilizar isso.
 """
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
 
 from api_quality_agent.adapters.config import FileSelectionRepository
 from api_quality_agent.adapters.filesystem import LocalArtifactRepository, LocalBackupRepository
+from api_quality_agent.adapters.newman import NewmanAdapter
 from api_quality_agent.adapters.postman import PostmanApiClient
 from api_quality_agent.cli import bootstrap
 from api_quality_agent.domain.models import ActiveSelection
+
+FAKE_NEWMAN_SCRIPT = Path(__file__).resolve().parent.parent / "fake_newman.py"
 
 FAKE_API_KEY = "PMAK-cli-fake-key-0000000000000000000000"
 
@@ -202,6 +206,29 @@ def offline_env(monkeypatch, tmp_path: Path):
         bootstrap, "LocalArtifactRepository", lambda: LocalArtifactRepository(tmp_path / "artifacts")
     )
     return tmp_path
+
+
+class _RecordingNewmanAdapterFactory:
+    """Substitui bootstrap.NewmanAdapter: registra o newman_executable
+    resolvido (para testar a precedência flag > env > padrão) mas sempre
+    executa o processo fake real (tests/fake_newman.py), nunca o Newman de
+    verdade nem um mock da chamada."""
+
+    def __init__(self) -> None:
+        self.captured_executables: list[str] = []
+
+    def __call__(self, *, newman_executable: str, command_prefix: tuple[str, ...] = ()) -> NewmanAdapter:
+        self.captured_executables.append(newman_executable)
+        return NewmanAdapter(
+            newman_executable=sys.executable, command_prefix=(str(FAKE_NEWMAN_SCRIPT),)
+        )
+
+
+@pytest.fixture
+def fake_newman(cli_env, monkeypatch):
+    factory = _RecordingNewmanAdapterFactory()
+    monkeypatch.setattr(bootstrap, "NewmanAdapter", factory)
+    return factory
 
 
 @pytest.fixture

@@ -6,9 +6,9 @@ A estrutura segue arquitetura hexagonal: o domínio (`domain/`) não depende de 
 
 ## Estado atual
 
-Já implementados (com testes automatizados — 727 testes, incluindo uma suíte de aceitação ponta a ponta em `tests/acceptance/`; mypy limpo):
+Já implementados (com testes automatizados — 757 testes, incluindo uma suíte de aceitação ponta a ponta em `tests/acceptance/`; mypy limpo):
 
-- **CLI instalável**: `--help`, `--version`, `config show`, `doctor`, `version`, `workspace list`, `workspace select`, `list`, `generate` e `update`. Todos reutilizam os use cases já existentes (nenhuma regra de negócio nova na CLI): `workspace select`/`generate`/`update` aceitam seleção por ID, nome, índice ou interativamente (lógica compartilhada em `cli/collection_selection.py`), sempre com confirmação prévia (pulável via `--yes`; Ctrl+C/EOF em qualquer prompt cancela de forma limpa, tratamento centralizado em `cli/interactive.py`). `generate --file <collection.json>` roda a análise/geração a partir de uma Collection exportada localmente, sem `POSTMAN_API_KEY` e sem nenhuma chamada de rede (`GenerateTestsFromDocumentUseCase`, modo `ExecutionMode.OFFLINE`). `update` gera os testes novamente a partir do estado *atual* da Collection no Postman e aplica a atualização remota (com preview, backup e confirmação padrão negativa) — reutiliza `GenerateCollectionTestsUseCase` + `UpdateCollectionUseCase` como já existiam, sem depender de artefatos de uma execução anterior do `generate`. Execução via Newman, relatórios e snapshots de contrato já existem e são testados na camada de aplicação, mas ainda não têm comando de CLI dedicado — ver limitações.
+- **CLI instalável**: `--help`, `--version`, `config show`, `doctor`, `version`, `workspace list`, `workspace select`, `list`, `generate`, `update` e `run`. Todos reutilizam os use cases já existentes (nenhuma regra de negócio nova na CLI): `workspace select`/`generate`/`update`/`run` aceitam seleção de Collection por ID, nome, índice ou interativamente (lógica compartilhada em `cli/collection_selection.py`), com Ctrl+C/EOF cancelando de forma limpa em qualquer prompt (tratamento centralizado em `cli/interactive.py`). `generate --file <collection.json>` roda a análise/geração a partir de uma Collection exportada localmente, sem `POSTMAN_API_KEY` e sem nenhuma chamada de rede (`GenerateTestsFromDocumentUseCase`, modo `ExecutionMode.OFFLINE`). `update` gera os testes novamente a partir do estado *atual* da Collection no Postman e aplica a atualização remota (com preview, backup e confirmação padrão negativa) — reutiliza `GenerateCollectionTestsUseCase` + `UpdateCollectionUseCase` como já existiam, sem depender de artefatos de uma execução anterior do `generate`. `run` executa a Collection via Newman (`RunCollectionUseCase`), com o executável resolvido por `--newman-executable` > `NEWMAN_EXECUTABLE` > `"newman"`, e mapeia o `ExecutionResult` para o código de saída (sucesso/falhas de teste/falha de infraestrutura são distinguidos, nunca por exceção). Relatórios e snapshots de contrato já existem e são testados na camada de aplicação, mas ainda não têm comando de CLI dedicado — ver limitações.
 - **Entrada**: `InputResolver` (arquivo/stdin/conteúdo direto) e `JsonDocumentParser`.
 - **Parsers de contrato**: OpenAPI 3.x / Swagger 2.0 (JSON ou YAML, com resolução de `$ref` interno) e Collection Postman (preserva scripts, pastas aninhadas e itens desconhecidos). `PostmanCollectionSerializer` faz o caminho inverso (documento → JSON do Postman), usado na atualização remota e no backup.
 - **Normalização Postman**: `auth`/`body`/`url` convertidos em modelos tipados (`NormalizedAuth`, `NormalizedBody`, `NormalizedUrl`), sem expor segredos.
@@ -27,7 +27,7 @@ Já implementados (com testes automatizados — 727 testes, incluindo uma suíte
 - **Snapshots de contrato** (`ContractSnapshot` + `ContractComparisonEngine`): persistem uma representação puramente estrutural (schema, status codes, content types — nunca valores reais) por Workspace/Collection/método/endpoint, e comparam duas versões de forma determinística (campo adicionado/removido, mudança de tipo/`required`/enum, status code, content type). Atualizar um baseline existente exige `overwrite=True` explícito.
 - **Testes de aceitação ponta a ponta** (`tests/acceptance/`): validam os fluxos completos do SAD compondo os componentes reais acima (sem mocks internos — só um servidor Postman local simulado e um processo Newman simulado), incluindo alternância entre Collections, isolamento de artefatos e confirmação de que a atualização remota simulada nunca atinge uma Collection não selecionada. Matriz requisito×teste e limitações conhecidas do MVP em `tests/acceptance/README.md`.
 
-Principais limitações atuais (detalhadas em `tests/acceptance/README.md`): não há comando de CLI para execução via Newman, relatórios ou snapshots de contrato, todos já implementados e testados na camada de aplicação, mas hoje só acionáveis compondo as classes diretamente em Python; a geração de testes (schema → estratégia → script) só existe para Collections Postman, não para especificações OpenAPI (que param na etapa de análise); `generate --file` cobre só a geração local (`ExecutionMode.OFFLINE`) — `update` sempre exige uma Collection real no Postman, não há um caminho de atualização offline; snapshots de contrato ainda não estão conectados a nenhum fluxo de geração/atualização; sem relatório de cobertura de código configurado no projeto.
+Principais limitações atuais (detalhadas em `tests/acceptance/README.md`): não há comando de CLI para relatórios ou snapshots de contrato, ambos já implementados e testados na camada de aplicação, mas hoje só acionáveis compondo as classes diretamente em Python; a geração de testes (schema → estratégia → script) só existe para Collections Postman, não para especificações OpenAPI (que param na etapa de análise); `generate --file` cobre só a geração local (`ExecutionMode.OFFLINE`) — `update`/`run` sempre exigem uma Collection real no Postman, não há um caminho offline para eles; `run` não aceita um Environment externo do Postman (`environment_path` sempre `None`) e não persiste nenhum artefato da execução (nem stdout/stderr/relatório do Newman) — fica para quando `report` for implementado; snapshots de contrato ainda não estão conectados a nenhum fluxo de geração/atualização; sem relatório de cobertura de código configurado no projeto.
 
 ## Instalação local
 
@@ -101,9 +101,24 @@ api-quality-agent update -n "Fake Store API Collection"
 api-quality-agent update 2
 api-quality-agent update
 api-quality-agent update --collection-id <id> --yes
+
+# Executa a Collection via Newman (mesma seleção por ID/nome/índice/interativa)
+api-quality-agent run --collection-id <id>
+api-quality-agent run -n "Fake Store API Collection"
+api-quality-agent run 2
+api-quality-agent run
+
+# Configura o caminho do executável do Newman quando ele não está resolvível
+# direto pelo PATH (comum no Windows — "newman" no PATH pode apontar para um
+# .ps1 que o subprocess do Python não executa diretamente; use o .cmd)
+api-quality-agent run -c <id> --newman-executable "C:\Users\voce\AppData\Roaming\npm\newman.cmd"
+# ...ou, se preferir configurar uma vez por sessão do terminal:
+# $env:NEWMAN_EXECUTABLE="C:\Users\voce\AppData\Roaming\npm\newman.cmd"
 ```
 
-Em `workspace select`, `generate` e `update`, apenas uma forma de seleção pode ser usada por vez (ID, nome, índice ou, só em `generate`, `--file`); combiná-las é rejeitado antes de qualquer chamada de rede. Sem `--yes`, todos sempre pedem confirmação antes de agir; qualquer resposta que não seja um "sim" reconhecido (incluindo Ctrl+C ou EOF, em qualquer prompt) cancela a operação sem alterar nada, com código de saída 9. Em `generate`/`update`, a seleção de Collection é sempre temporária (nunca sobrescreve a seleção ativa); já `workspace select`, ao ser confirmado, persiste o novo Workspace em `~/.api-quality-agent/selection.json` — e se o Workspace escolhido for diferente do anterior, a Collection ativa é limpa (pertencia ao contexto anterior).
+Em `workspace select`, `generate`, `update` e `run`, apenas uma forma de seleção pode ser usada por vez (ID, nome, índice ou, só em `generate`, `--file`); combiná-las é rejeitado antes de qualquer chamada de rede. Sem `--yes` (em `generate`/`update`), sempre pedem confirmação antes de agir; qualquer resposta que não seja um "sim" reconhecido (incluindo Ctrl+C ou EOF, em qualquer prompt) cancela a operação sem alterar nada, com código de saída 9. Em `generate`/`update`/`run`, a seleção de Collection é sempre temporária (nunca sobrescreve a seleção ativa); já `workspace select`, ao ser confirmado, persiste o novo Workspace em `~/.api-quality-agent/selection.json` — e se o Workspace escolhido for diferente do anterior, a Collection ativa é limpa (pertencia ao contexto anterior).
+
+`run` não pede confirmação (não é uma operação destrutiva) e nunca lança exceção para representar falha de teste ou de infraestrutura do Newman — ele sempre inspeciona o `ExecutionResult` devolvido por `RunCollectionUseCase` e mapeia para um código de saída: `0` (sucesso completo), `1` (Newman executou, mas houve falhas de assertion) ou `6` (falha de infraestrutura — executável não encontrado, timeout, Collection inválida). O executável do Newman é resolvido nesta ordem: flag `--newman-executable` → variável de ambiente `NEWMAN_EXECUTABLE` → `"newman"` (padrão, via PATH). Nesta primeira versão, `run` não aceita um Environment externo do Postman e não persiste nenhum artefato da execução (nem stdout/stderr/relatório do Newman) — isso fica para quando o comando `report` for implementado.
 
 `generate --file` roda só a análise/geração local (sem `update` remoto — não há Collection do Postman pra atualizar); os artefatos são salvos em `artifacts/local/<nome-da-collection>/<execução>/`, junto com os demais. Como o export pode conter tokens/headers salvos nos requests, evite versionar o arquivo — a pasta `local/` já é gitignored e serve bem pra isso.
 
@@ -117,7 +132,7 @@ Os scripts de exemplo antigos em `local/` (ex.: `select_collection_and_generate.
 
 ### Fluxos ainda sem comando de CLI (disponíveis via Python)
 
-Execução via Newman, relatórios e snapshots de contrato já estão implementados e testados (ver "Estado atual"), mas hoje só são acionáveis compondo as classes diretamente em Python — não há comando de CLI para eles. Exemplo mínimo (selecionar Workspace/Collection e gerar testes — equivalente ao que `workspace select` + `generate` já fazem pela CLI):
+Relatórios e snapshots de contrato já estão implementados e testados (ver "Estado atual"), mas hoje só são acionáveis compondo as classes diretamente em Python — não há comando de CLI para eles. Exemplo mínimo (selecionar Workspace/Collection e gerar testes — equivalente ao que `workspace select` + `generate` já fazem pela CLI):
 
 ```python
 import os
