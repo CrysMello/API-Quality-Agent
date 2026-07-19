@@ -9,6 +9,9 @@ from api_quality_agent.application.use_cases.get_current_collection import (
 from api_quality_agent.application.use_cases.get_current_workspace import (
     GetCurrentWorkspaceUseCase,
 )
+from api_quality_agent.application.use_cases.generate_tests_from_document import (
+    GenerateTestsFromDocumentUseCase,
+)
 from api_quality_agent.application.use_cases.get_effective_configuration import (
     EffectiveConfiguration,
     get_effective_configuration,
@@ -37,6 +40,7 @@ __all__ = [
     "DiagnosticReport",
     "EffectiveConfiguration",
     "GenerateCollectionTestsUseCase",
+    "GenerateTestsFromDocumentUseCase",
     "GetCurrentCollectionUseCase",
     "GetCurrentWorkspaceUseCase",
     "ListCollectionsUseCase",

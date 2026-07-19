@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass
 
 from api_quality_agent.adapters.config import FileSelectionRepository
-from api_quality_agent.adapters.filesystem import LocalArtifactRepository
+from api_quality_agent.adapters.filesystem import InputResolver, LocalArtifactRepository
 from api_quality_agent.adapters.postman import (
     PostmanApiClient,
     PostmanCollectionRepository,
@@ -11,6 +11,7 @@ from api_quality_agent.adapters.postman import (
 from api_quality_agent.application.orchestration import AgentOrchestrator
 from api_quality_agent.application.use_cases import (
     GenerateCollectionTestsUseCase,
+    GenerateTestsFromDocumentUseCase,
     GetCurrentWorkspaceUseCase,
     ListCollectionsUseCase,
     ListWorkspacesUseCase,
@@ -28,6 +29,7 @@ from api_quality_agent.domain.services import (
     TestStrategyEngine,
 )
 from api_quality_agent.generators import PostmanTestGenerator
+from api_quality_agent.parsers import PostmanCollectionParser
 from api_quality_agent.ports.outbound import (
     ArtifactRepository,
     CollectionRepository,
@@ -55,6 +57,17 @@ class CliContext:
     select_workspace_use_case: SelectWorkspaceUseCase
 
 
+def _build_orchestrator() -> AgentOrchestrator:
+    return AgentOrchestrator(
+        ApiAnalysisEngine(),
+        SchemaInferenceEngine(),
+        TestStrategyEngine(),
+        PostmanTestGenerator(),
+        ManagedBlockMerger(),
+        DiffEngine(),
+    )
+
+
 def build_context(
     *,
     artifact_repository: ArtifactRepository | None = None,
@@ -79,14 +92,7 @@ def build_context(
     )
     get_current_workspace_use_case = GetCurrentWorkspaceUseCase(effective_selection_repository)
 
-    orchestrator = AgentOrchestrator(
-        ApiAnalysisEngine(),
-        SchemaInferenceEngine(),
-        TestStrategyEngine(),
-        PostmanTestGenerator(),
-        ManagedBlockMerger(),
-        DiffEngine(),
-    )
+    orchestrator = _build_orchestrator()
     generate_use_case = GenerateCollectionTestsUseCase(
         get_current_workspace_use_case,
         resolve_collection_use_case,
@@ -109,6 +115,29 @@ def build_context(
         list_workspaces_use_case=ListWorkspacesUseCase(workspace_repository),
         select_workspace_use_case=SelectWorkspaceUseCase(
             workspace_repository, effective_selection_repository
+        ),
+    )
+
+
+@dataclass
+class OfflineCliContext:
+    # Composição paralela a CliContext para o modo "arquivo local": nunca
+    # requer POSTMAN_API_KEY nem toca a API do Postman — só parsing local e
+    # a mesma pipeline de geração (orquestrador) usada no modo online.
+    input_resolver: InputResolver
+    collection_parser: PostmanCollectionParser
+    generate_from_file_use_case: GenerateTestsFromDocumentUseCase
+
+
+def build_offline_context(
+    *,
+    artifact_repository: ArtifactRepository | None = None,
+) -> OfflineCliContext:
+    return OfflineCliContext(
+        input_resolver=InputResolver(),
+        collection_parser=PostmanCollectionParser(),
+        generate_from_file_use_case=GenerateTestsFromDocumentUseCase(
+            _build_orchestrator(), artifact_repository or LocalArtifactRepository()
         ),
     )
 

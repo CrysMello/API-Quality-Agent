@@ -6,9 +6,9 @@ A estrutura segue arquitetura hexagonal: o domínio (`domain/`) não depende de 
 
 ## Estado atual
 
-Já implementados (com testes automatizados — 667 testes, incluindo uma suíte de aceitação ponta a ponta em `tests/acceptance/`; mypy limpo):
+Já implementados (com testes automatizados — 689 testes, incluindo uma suíte de aceitação ponta a ponta em `tests/acceptance/`; mypy limpo):
 
-- **CLI instalável**: `--help`, `--version`, `config show`, `doctor`, `version`, `workspace list`, `workspace select`, `list` e `generate`. Todos reutilizam os use cases já existentes (nenhuma regra de negócio nova na CLI): `workspace select`/`generate` aceitam seleção por ID, nome, índice ou interativamente, sempre com confirmação prévia (pulável via `--yes`). Atualização remota, execução via Newman, relatórios e snapshots de contrato já existem e são testados na camada de aplicação, mas ainda não têm comando de CLI dedicado — ver limitações.
+- **CLI instalável**: `--help`, `--version`, `config show`, `doctor`, `version`, `workspace list`, `workspace select`, `list` e `generate`. Todos reutilizam os use cases já existentes (nenhuma regra de negócio nova na CLI): `workspace select`/`generate` aceitam seleção por ID, nome, índice ou interativamente, sempre com confirmação prévia (pulável via `--yes`). `generate --file <collection.json>` roda a análise/geração a partir de uma Collection exportada localmente, sem `POSTMAN_API_KEY` e sem nenhuma chamada de rede (`GenerateTestsFromDocumentUseCase`, modo `ExecutionMode.OFFLINE`). Atualização remota, execução via Newman, relatórios e snapshots de contrato já existem e são testados na camada de aplicação, mas ainda não têm comando de CLI dedicado — ver limitações.
 - **Entrada**: `InputResolver` (arquivo/stdin/conteúdo direto) e `JsonDocumentParser`.
 - **Parsers de contrato**: OpenAPI 3.x / Swagger 2.0 (JSON ou YAML, com resolução de `$ref` interno) e Collection Postman (preserva scripts, pastas aninhadas e itens desconhecidos). `PostmanCollectionSerializer` faz o caminho inverso (documento → JSON do Postman), usado na atualização remota e no backup.
 - **Normalização Postman**: `auth`/`body`/`url` convertidos em modelos tipados (`NormalizedAuth`, `NormalizedBody`, `NormalizedUrl`), sem expor segredos.
@@ -27,7 +27,7 @@ Já implementados (com testes automatizados — 667 testes, incluindo uma suíte
 - **Snapshots de contrato** (`ContractSnapshot` + `ContractComparisonEngine`): persistem uma representação puramente estrutural (schema, status codes, content types — nunca valores reais) por Workspace/Collection/método/endpoint, e comparam duas versões de forma determinística (campo adicionado/removido, mudança de tipo/`required`/enum, status code, content type). Atualizar um baseline existente exige `overwrite=True` explícito.
 - **Testes de aceitação ponta a ponta** (`tests/acceptance/`): validam os fluxos completos do SAD compondo os componentes reais acima (sem mocks internos — só um servidor Postman local simulado e um processo Newman simulado), incluindo alternância entre Collections, isolamento de artefatos e confirmação de que a atualização remota simulada nunca atinge uma Collection não selecionada. Matriz requisito×teste e limitações conhecidas do MVP em `tests/acceptance/README.md`.
 
-Principais limitações atuais (detalhadas em `tests/acceptance/README.md`): não há comando de CLI para atualização remota, execução via Newman, relatórios ou snapshots de contrato, todos já implementados e testados na camada de aplicação, mas hoje só acionáveis compondo as classes diretamente em Python; a geração de testes (schema → estratégia → script) só existe para Collections Postman, não para especificações OpenAPI (que param na etapa de análise); `ExecutionMode.OFFLINE` não é usado por nenhum caminho de produção; snapshots de contrato ainda não estão conectados a nenhum fluxo de geração/atualização; sem relatório de cobertura de código configurado no projeto.
+Principais limitações atuais (detalhadas em `tests/acceptance/README.md`): não há comando de CLI para atualização remota, execução via Newman, relatórios ou snapshots de contrato, todos já implementados e testados na camada de aplicação, mas hoje só acionáveis compondo as classes diretamente em Python; a geração de testes (schema → estratégia → script) só existe para Collections Postman, não para especificações OpenAPI (que param na etapa de análise); `generate --file` cobre só a geração local (`ExecutionMode.OFFLINE`) — não há um caminho equivalente em modo offline para atualização remota/Newman/relatório, que continuam exigindo uma Collection real no Postman; snapshots de contrato ainda não estão conectados a nenhum fluxo de geração/atualização; sem relatório de cobertura de código configurado no projeto.
 
 ## Instalação local
 
@@ -86,9 +86,17 @@ api-quality-agent generate
 
 # Pula a confirmação final (útil em scripts/automação)
 api-quality-agent generate --collection-id <id> --yes
+
+# Gera os testes a partir de uma Collection exportada localmente (Postman >
+# Collection > Export), sem conectar à API do Postman e sem precisar de
+# POSTMAN_API_KEY — útil quando você só tem o arquivo, ou quer gerar os
+# scripts offline para colar manualmente depois
+api-quality-agent generate --file local/collections/minha_collection_exportada.json
 ```
 
-Em `workspace select` e `generate`, apenas uma forma de seleção pode ser usada por vez (ID, nome ou índice); combiná-las é rejeitado antes de qualquer chamada de rede. Sem `--yes`, ambos sempre pedem confirmação antes de persistir a seleção (ou gerar/aplicar os testes); qualquer resposta que não seja um "sim" reconhecido (incluindo Ctrl+C) cancela a operação sem alterar nada. Em `generate`, a seleção de Collection é sempre temporária (nunca sobrescreve a seleção ativa); já `workspace select`, ao ser confirmado, persiste o novo Workspace em `~/.api-quality-agent/selection.json` — e se o Workspace escolhido for diferente do anterior, a Collection ativa é limpa (pertencia ao contexto anterior).
+Em `workspace select` e `generate`, apenas uma forma de seleção pode ser usada por vez (ID, nome, índice ou `--file`); combiná-las é rejeitado antes de qualquer chamada de rede. Sem `--yes`, todos sempre pedem confirmação antes de persistir a seleção (ou gerar/aplicar os testes); qualquer resposta que não seja um "sim" reconhecido (incluindo Ctrl+C) cancela a operação sem alterar nada. Em `generate`, a seleção de Collection é sempre temporária (nunca sobrescreve a seleção ativa); já `workspace select`, ao ser confirmado, persiste o novo Workspace em `~/.api-quality-agent/selection.json` — e se o Workspace escolhido for diferente do anterior, a Collection ativa é limpa (pertencia ao contexto anterior).
+
+`generate --file` roda só a análise/geração local (sem `update` remoto — não há Collection do Postman pra atualizar); os artefatos são salvos em `artifacts/local/<nome-da-collection>/<execução>/`, junto com os demais. Como o export pode conter tokens/headers salvos nos requests, evite versionar o arquivo — a pasta `local/` já é gitignored e serve bem pra isso.
 
 Os scripts de exemplo antigos em `local/` (ex.: `select_collection_and_generate.py`, com `COLLECTION_ID` editado manualmente no código) não são mais necessários — `api-quality-agent workspace select` + `generate` os substituem.
 

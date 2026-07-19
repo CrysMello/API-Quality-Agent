@@ -177,6 +177,17 @@ def read_active_selection(tmp_path: Path):
 
 
 @pytest.fixture
+def offline_env(monkeypatch, tmp_path: Path):
+    # Modo "arquivo local": garante explicitamente a ausência da API Key
+    # (prova que o fluxo não depende dela) e isola os artefatos gerados.
+    monkeypatch.delenv("POSTMAN_API_KEY", raising=False)
+    monkeypatch.setattr(
+        bootstrap, "LocalArtifactRepository", lambda: LocalArtifactRepository(tmp_path / "artifacts")
+    )
+    return tmp_path
+
+
+@pytest.fixture
 def no_api_key_env() -> dict[str, str]:
     env = dict(os.environ)
     env.pop("POSTMAN_API_KEY", None)

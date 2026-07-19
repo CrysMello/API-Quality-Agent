@@ -7,6 +7,7 @@ rápido e sem custo de I/O de subprocesso) pelos demais arquivos de teste
 desta pasta.
 """
 
+import json
 import subprocess
 import sys
 
@@ -15,13 +16,16 @@ from api_quality_agent import __version__
 _CLI_MODULE = "api_quality_agent.cli.main"
 
 
-def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+def _run_cli(
+    *args: str, env: dict[str, str] | None = None, cwd: str | None = None
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", _CLI_MODULE, *args],
         capture_output=True,
         text=True,
         encoding="utf-8",
         env=env,
+        cwd=cwd,
         timeout=30,
     )
 
@@ -57,6 +61,7 @@ def test_generate_help_exits_zero_and_documents_flags():
     assert result.returncode == 0
     assert "--collection-id" in result.stdout
     assert "--collection-name" in result.stdout
+    assert "--file" in result.stdout
     assert "--yes" in result.stdout
 
 
@@ -110,6 +115,33 @@ def test_workspace_select_without_api_key_fails_fast_without_network(no_api_key_
 
     assert result.returncode == 2
     assert "POSTMAN_API_KEY" in result.stderr
+
+
+def test_generate_from_file_works_in_a_real_subprocess_without_api_key(no_api_key_env, tmp_path):
+    document = {
+        "info": {
+            "name": "Subprocess Collection",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Ping",
+                "id": "req-1",
+                "request": {"method": "GET", "url": "https://api.exemplo.com/ping"},
+                "response": [{"name": "ok", "status": "OK", "code": 200, "header": [], "body": "{}"}],
+            }
+        ],
+    }
+    collection_path = tmp_path / "collection.json"
+    collection_path.write_text(json.dumps(document), encoding="utf-8")
+
+    result = _run_cli(
+        "generate", "--file", "collection.json", "--yes", env=no_api_key_env, cwd=str(tmp_path)
+    )
+
+    assert result.returncode == 0
+    assert "Subprocess Collection" in result.stdout
+    assert (tmp_path / "artifacts" / "local").is_dir()
 
 
 def test_unknown_command_exits_with_argparse_usage_error():

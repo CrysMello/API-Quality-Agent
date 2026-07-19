@@ -1,5 +1,6 @@
 import argparse
 
+from api_quality_agent.application.orchestration import CollectionGenerationResult
 from api_quality_agent.cli import bootstrap
 from api_quality_agent.cli.bootstrap import CliContext
 from api_quality_agent.cli.exit_codes import OPERATION_CANCELLED, SUCCESS
@@ -37,6 +38,17 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         help="Nome da Collection.",
     )
     parser.add_argument(
+        "-f",
+        "--file",
+        dest="file",
+        default=None,
+        metavar="COLLECTION_JSON",
+        help=(
+            "Gera os testes a partir de uma Collection exportada localmente "
+            "(arquivo .json), sem conectar à API do Postman."
+        ),
+    )
+    parser.add_argument(
         "-y",
         "--yes",
         dest="yes",
@@ -48,6 +60,9 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
 
 def _handle_generate(args: argparse.Namespace) -> int:
     _validate_selection_arguments(args)
+
+    if args.file is not None:
+        return _handle_generate_from_file(args)
 
     context = bootstrap.build_context()
     workspace_ref = bootstrap.resolve_active_workspace(context)
@@ -75,6 +90,31 @@ def _handle_generate(args: argparse.Namespace) -> int:
     # persiste), nunca altera a seleção ativa salva em disco.
     result = context.generate_use_case.execute(collection_id=selected.id)
 
+    _print_generation_summary(result)
+    return SUCCESS
+
+
+def _handle_generate_from_file(args: argparse.Namespace) -> int:
+    context = bootstrap.build_offline_context()
+
+    resolved_input = context.input_resolver.resolve_from_file(args.file)
+    document = context.collection_parser.parse(resolved_input)
+
+    print(f"Arquivo: {args.file}")
+    print(f"Collection: {document.name}\n")
+
+    if not args.yes and not _confirm():
+        print("Operação cancelada pelo usuário.")
+        return OPERATION_CANCELLED
+
+    print("Gerando testes (modo local, sem conexão com a API do Postman)...")
+    result = context.generate_from_file_use_case.execute(document=document)
+
+    _print_generation_summary(result)
+    return SUCCESS
+
+
+def _print_generation_summary(result: CollectionGenerationResult) -> None:
     print("Processo concluído com sucesso.\n")
     print(f"Endpoints processados: {len(result.endpoint_outcomes)}")
     failed_outcomes = [outcome for outcome in result.endpoint_outcomes if outcome.error is not None]
@@ -85,17 +125,16 @@ def _handle_generate(args: argparse.Namespace) -> int:
     for location in result.artifact_locations:
         print(f"  - {location.path}")
 
-    return SUCCESS
-
 
 def _validate_selection_arguments(args: argparse.Namespace) -> None:
     provided = [
         value is not None
-        for value in (args.index, args.collection_id, args.collection_name)
+        for value in (args.index, args.collection_id, args.collection_name, args.file)
     ]
     if sum(provided) > 1:
         raise InputError(
-            "informe somente uma forma de seleção da Collection. Use ID, nome ou índice."
+            "informe somente uma forma de seleção da Collection. Use ID, nome, índice ou "
+            "--file (não podem ser combinados)."
         )
 
 
