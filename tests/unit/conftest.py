@@ -22,6 +22,9 @@ FAKE_API_KEY = "PMAK-cli-fake-key-0000000000000000000000"
 
 WORKSPACE_ID = "ws-cli-1"
 WORKSPACE_NAME = "QA Workspace"
+WORKSPACE_B_ID = "ws-cli-2"
+WORKSPACE_B_NAME = "Ops Workspace"
+DUPLICATE_WORKSPACE_ID = "ws-cli-1-dup"
 
 COLLECTION_A_ID = "col-cli-a"
 COLLECTION_A_NAME = "Pets API"
@@ -72,20 +75,26 @@ def configure_server(
     server,
     *,
     workspaces: list[dict] | None = None,
+    multiple_workspaces: bool = False,
+    duplicate_workspace_name: bool = False,
+    empty_workspaces: bool = False,
     with_collections: bool = True,
     duplicate_name: bool = False,
     empty_collections: bool = False,
 ) -> None:
-    server.set_route("/me", status=200, body={"user": {"id": 1, "username": "qa"}})
-    server.set_route(
-        "/workspaces",
-        status=200,
-        body={
-            "workspaces": workspaces
-            if workspaces is not None
+    if workspaces is None:
+        workspaces = (
+            []
+            if empty_workspaces
             else [{"id": WORKSPACE_ID, "name": WORKSPACE_NAME}]
-        },
-    )
+        )
+        if multiple_workspaces:
+            workspaces.append({"id": WORKSPACE_B_ID, "name": WORKSPACE_B_NAME})
+        if duplicate_workspace_name:
+            workspaces.append({"id": DUPLICATE_WORKSPACE_ID, "name": WORKSPACE_NAME})
+
+    server.set_route("/me", status=200, body={"user": {"id": 1, "username": "qa"}})
+    server.set_route("/workspaces", status=200, body={"workspaces": workspaces})
 
     if not with_collections:
         return
@@ -157,6 +166,14 @@ def selected_workspace(cli_env, tmp_path: Path):
     repository = FileSelectionRepository(tmp_path / "selection.json")
     repository.save(ActiveSelection(workspace_id=WORKSPACE_ID))
     return WORKSPACE_ID
+
+
+@pytest.fixture
+def read_active_selection(tmp_path: Path):
+    def _read() -> ActiveSelection:
+        return FileSelectionRepository(tmp_path / "selection.json").load()
+
+    return _read
 
 
 @pytest.fixture

@@ -13,7 +13,9 @@ from api_quality_agent.application.use_cases import (
     GenerateCollectionTestsUseCase,
     GetCurrentWorkspaceUseCase,
     ListCollectionsUseCase,
+    ListWorkspacesUseCase,
     ResolveCollectionUseCase,
+    SelectWorkspaceUseCase,
 )
 from api_quality_agent.domain.exceptions import ConfigurationError, InputError, ResourceNotFoundError
 from api_quality_agent.domain.models import CollectionRef, WorkspaceRef
@@ -49,6 +51,8 @@ class CliContext:
     resolve_collection_use_case: ResolveCollectionUseCase
     list_collections_use_case: ListCollectionsUseCase
     generate_use_case: GenerateCollectionTestsUseCase
+    list_workspaces_use_case: ListWorkspacesUseCase
+    select_workspace_use_case: SelectWorkspaceUseCase
 
 
 def build_context(
@@ -102,6 +106,10 @@ def build_context(
             collection_repository, effective_selection_repository
         ),
         generate_use_case=generate_use_case,
+        list_workspaces_use_case=ListWorkspacesUseCase(workspace_repository),
+        select_workspace_use_case=SelectWorkspaceUseCase(
+            workspace_repository, effective_selection_repository
+        ),
     )
 
 
@@ -128,3 +136,8 @@ def sort_collections(collections: tuple[CollectionRef, ...]) -> list[CollectionR
     # execução atual — o índice nunca deve ser tratado como identificador
     # persistente entre chamadas.
     return sorted(collections, key=lambda collection: (collection.name, collection.id))
+
+
+def sort_workspaces(workspaces: tuple[WorkspaceRef, ...]) -> list[WorkspaceRef]:
+    # Mesma convenção de sort_collections, aplicada a Workspaces.
+    return sorted(workspaces, key=lambda workspace: (workspace.name, workspace.id))

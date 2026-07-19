@@ -6,9 +6,9 @@ A estrutura segue arquitetura hexagonal: o domínio (`domain/`) não depende de 
 
 ## Estado atual
 
-Já implementados (com testes automatizados — 636 testes, incluindo uma suíte de aceitação ponta a ponta em `tests/acceptance/`; mypy limpo):
+Já implementados (com testes automatizados — 667 testes, incluindo uma suíte de aceitação ponta a ponta em `tests/acceptance/`; mypy limpo):
 
-- **CLI instalável**: `--help`, `--version`, `config show`, `doctor`, `version`, `list` e `generate`. `list`/`generate` reutilizam os use cases já existentes (nenhuma regra de negócio nova na CLI) para listar as Collections do Workspace ativo e gerar/aplicar testes, com seleção de Collection por ID, nome, índice ou interativamente. Atualização remota, execução via Newman, relatórios e snapshots de contrato já existem e são testados na camada de aplicação, mas ainda não têm comando de CLI dedicado — ver limitações.
+- **CLI instalável**: `--help`, `--version`, `config show`, `doctor`, `version`, `workspace list`, `workspace select`, `list` e `generate`. Todos reutilizam os use cases já existentes (nenhuma regra de negócio nova na CLI): `workspace select`/`generate` aceitam seleção por ID, nome, índice ou interativamente, sempre com confirmação prévia (pulável via `--yes`). Atualização remota, execução via Newman, relatórios e snapshots de contrato já existem e são testados na camada de aplicação, mas ainda não têm comando de CLI dedicado — ver limitações.
 - **Entrada**: `InputResolver` (arquivo/stdin/conteúdo direto) e `JsonDocumentParser`.
 - **Parsers de contrato**: OpenAPI 3.x / Swagger 2.0 (JSON ou YAML, com resolução de `$ref` interno) e Collection Postman (preserva scripts, pastas aninhadas e itens desconhecidos). `PostmanCollectionSerializer` faz o caminho inverso (documento → JSON do Postman), usado na atualização remota e no backup.
 - **Normalização Postman**: `auth`/`body`/`url` convertidos em modelos tipados (`NormalizedAuth`, `NormalizedBody`, `NormalizedUrl`), sem expor segredos.
@@ -27,7 +27,7 @@ Já implementados (com testes automatizados — 636 testes, incluindo uma suíte
 - **Snapshots de contrato** (`ContractSnapshot` + `ContractComparisonEngine`): persistem uma representação puramente estrutural (schema, status codes, content types — nunca valores reais) por Workspace/Collection/método/endpoint, e comparam duas versões de forma determinística (campo adicionado/removido, mudança de tipo/`required`/enum, status code, content type). Atualizar um baseline existente exige `overwrite=True` explícito.
 - **Testes de aceitação ponta a ponta** (`tests/acceptance/`): validam os fluxos completos do SAD compondo os componentes reais acima (sem mocks internos — só um servidor Postman local simulado e um processo Newman simulado), incluindo alternância entre Collections, isolamento de artefatos e confirmação de que a atualização remota simulada nunca atinge uma Collection não selecionada. Matriz requisito×teste e limitações conhecidas do MVP em `tests/acceptance/README.md`.
 
-Principais limitações atuais (detalhadas em `tests/acceptance/README.md`): não há comando de CLI para selecionar/trocar o Workspace ativo (`list`/`generate` dependem de uma seleção já feita — hoje só via composição em Python, ver `tests/acceptance/conftest.py::build_app`) nem para atualização remota, execução via Newman, relatórios ou snapshots de contrato, todos já implementados e testados na camada de aplicação; a geração de testes (schema → estratégia → script) só existe para Collections Postman, não para especificações OpenAPI (que param na etapa de análise); `ExecutionMode.OFFLINE` não é usado por nenhum caminho de produção; snapshots de contrato ainda não estão conectados a nenhum fluxo de geração/atualização; sem relatório de cobertura de código configurado no projeto.
+Principais limitações atuais (detalhadas em `tests/acceptance/README.md`): não há comando de CLI para atualização remota, execução via Newman, relatórios ou snapshots de contrato, todos já implementados e testados na camada de aplicação, mas hoje só acionáveis compondo as classes diretamente em Python; a geração de testes (schema → estratégia → script) só existe para Collections Postman, não para especificações OpenAPI (que param na etapa de análise); `ExecutionMode.OFFLINE` não é usado por nenhum caminho de produção; snapshots de contrato ainda não estão conectados a nenhum fluxo de geração/atualização; sem relatório de cobertura de código configurado no projeto.
 
 ## Instalação local
 
@@ -58,6 +58,16 @@ api-quality-agent --help
 api-quality-agent --version
 api-quality-agent version
 
+# Lista os Workspaces disponíveis para a API Key configurada
+api-quality-agent workspace list
+
+# Seleciona o Workspace ativo, por ID, por nome, pelo índice mostrado por
+# `workspace list`, ou interativamente (mesmas regras de generate, abaixo)
+api-quality-agent workspace select --workspace-id <id>
+api-quality-agent workspace select --workspace-name "Meu Workspace"
+api-quality-agent workspace select 1
+api-quality-agent workspace select
+
 # Lista as Collections do Workspace ativo
 api-quality-agent list
 
@@ -78,13 +88,13 @@ api-quality-agent generate
 api-quality-agent generate --collection-id <id> --yes
 ```
 
-Apenas uma forma de seleção pode ser usada por vez (ID, nome ou índice); combiná-las é rejeitado antes de qualquer chamada de rede. Sem `--yes`, o comando sempre pede confirmação antes de gerar/aplicar os testes; qualquer resposta que não seja um "sim" reconhecido (incluindo Ctrl+C) cancela a operação sem alterar nada. A seleção feita por `--collection-id`/`--collection-name`/índice/interativa é sempre temporária: nunca sobrescreve a seleção ativa persistida em `~/.api-quality-agent/selection.json`.
+Em `workspace select` e `generate`, apenas uma forma de seleção pode ser usada por vez (ID, nome ou índice); combiná-las é rejeitado antes de qualquer chamada de rede. Sem `--yes`, ambos sempre pedem confirmação antes de persistir a seleção (ou gerar/aplicar os testes); qualquer resposta que não seja um "sim" reconhecido (incluindo Ctrl+C) cancela a operação sem alterar nada. Em `generate`, a seleção de Collection é sempre temporária (nunca sobrescreve a seleção ativa); já `workspace select`, ao ser confirmado, persiste o novo Workspace em `~/.api-quality-agent/selection.json` — e se o Workspace escolhido for diferente do anterior, a Collection ativa é limpa (pertencia ao contexto anterior).
 
-**Limitação atual**: ainda não existe um comando de CLI para escolher/trocar o Workspace ativo — `list` e `generate` exigem que já exista uma seleção de Workspace salva (ver seção "Fluxos ainda sem comando de CLI" abaixo para configurá-la via Python). Os scripts de exemplo antigos em `local/` (ex.: `select_collection_and_generate.py`, com `COLLECTION_ID` editado manualmente no código) não são mais necessários para gerar testes — `api-quality-agent generate` os substitui.
+Os scripts de exemplo antigos em `local/` (ex.: `select_collection_and_generate.py`, com `COLLECTION_ID` editado manualmente no código) não são mais necessários — `api-quality-agent workspace select` + `generate` os substituem.
 
 ### Fluxos ainda sem comando de CLI (disponíveis via Python)
 
-Seleção de Workspace, atualização remota, execução via Newman, relatórios e snapshots de contrato já estão implementados e testados (ver "Estado atual"), mas hoje só são acionáveis compondo as classes diretamente em Python — não há comando de CLI para eles. Exemplo mínimo (selecionar Workspace/Collection e gerar testes):
+Atualização remota, execução via Newman, relatórios e snapshots de contrato já estão implementados e testados (ver "Estado atual"), mas hoje só são acionáveis compondo as classes diretamente em Python — não há comando de CLI para eles. Exemplo mínimo (selecionar Workspace/Collection e gerar testes — equivalente ao que `workspace select` + `generate` já fazem pela CLI):
 
 ```python
 import os
