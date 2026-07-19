@@ -10,6 +10,9 @@ from api_quality_agent.domain.exceptions import (
     UpdateNotApprovedError,
 )
 
+# Convenção de códigos de saída da CLI. Números já publicados nunca são
+# reaproveitados para outro significado — novos cenários recebem um código
+# novo (ver OPERATION_CANCELLED) em vez de renumerar os existentes.
 SUCCESS = 0
 FUNCTIONAL_FAILURE = 1
 INVALID_INPUT_OR_CONFIGURATION = 2
@@ -19,6 +22,7 @@ AMBIGUOUS_SELECTION = 5
 INTEGRATION_FAILURE = 6
 UPDATE_NOT_APPROVED = 7
 INTERNAL_FAILURE = 8
+OPERATION_CANCELLED = 9
 
 # Ordem importa: subclasses mais específicas devem ser checadas antes de suas
 # bases (ex.: AuthenticationError antes de IntegrationError).

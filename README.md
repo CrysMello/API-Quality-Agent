@@ -6,23 +6,28 @@ A estrutura segue arquitetura hexagonal: o domínio (`domain/`) não depende de 
 
 ## Estado atual
 
-Já implementados (com testes automatizados — 407 testes, mypy limpo):
+Já implementados (com testes automatizados — 636 testes, incluindo uma suíte de aceitação ponta a ponta em `tests/acceptance/`; mypy limpo):
 
-- **CLI base**: `--help`, `--version`, `config show`, `doctor`. Os fluxos de seleção de Workspace/Collection e de geração de testes abaixo já existem na camada de aplicação, mas ainda não foram expostos como comandos de CLI.
+- **CLI instalável**: `--help`, `--version`, `config show`, `doctor`, `version`, `list` e `generate`. `list`/`generate` reutilizam os use cases já existentes (nenhuma regra de negócio nova na CLI) para listar as Collections do Workspace ativo e gerar/aplicar testes, com seleção de Collection por ID, nome, índice ou interativamente. Atualização remota, execução via Newman, relatórios e snapshots de contrato já existem e são testados na camada de aplicação, mas ainda não têm comando de CLI dedicado — ver limitações.
 - **Entrada**: `InputResolver` (arquivo/stdin/conteúdo direto) e `JsonDocumentParser`.
-- **Parsers de contrato**: OpenAPI 3.x / Swagger 2.0 (JSON ou YAML, com resolução de `$ref` interno) e Collection Postman (preserva scripts, pastas aninhadas e itens desconhecidos).
+- **Parsers de contrato**: OpenAPI 3.x / Swagger 2.0 (JSON ou YAML, com resolução de `$ref` interno) e Collection Postman (preserva scripts, pastas aninhadas e itens desconhecidos). `PostmanCollectionSerializer` faz o caminho inverso (documento → JSON do Postman), usado na atualização remota e no backup.
 - **Normalização Postman**: `auth`/`body`/`url` convertidos em modelos tipados (`NormalizedAuth`, `NormalizedBody`, `NormalizedUrl`), sem expor segredos.
-- **API Analysis Engine**: relaciona endpoints, parâmetros, autenticação e dependências prováveis entre requests (sempre com evidência, nunca por suposição); também expõe cada request bruta pareada com sua análise (`analyze_collection_requests`), usado pelo orquestrador de geração.
+- **API Analysis Engine**: relaciona endpoints, parâmetros, autenticação e dependências prováveis entre requests (sempre com evidência, nunca por suposição), tanto para Collections Postman quanto para especificações OpenAPI (`analyze`/`analyze_specification`); também expõe cada request bruta pareada com sua análise (`analyze_collection_requests`), usado pelo orquestrador de geração.
 - **Schema Inference Engine**: gera JSON Schema determinístico a partir de exemplos, com políticas conservadoras (`required` só com evidência, sem inferir formatos por nome de campo).
 - **Test Strategy Engine**: converte a análise em uma estratégia de testes estruturada (asserções, extrações de variável, cenários negativos), cada decisão com origem rastreável.
 - **Postman Test Generator**: converte a estratégia em JavaScript comentado para o campo *Tests* do Postman, com resumo legível em português e warnings de inferências incertas.
-- **Integração com a API do Postman**: `PostmanApiClient` (via `urllib`, sem dependências de runtime novas) e os repositórios `PostmanWorkspaceRepository`/`PostmanCollectionRepository`, testados contra um servidor HTTP local (sem mocks). Somente leitura (listagem/obtenção) até o momento — nenhuma chamada de atualização remota é feita.
-- **Seleção de Workspace/Collection**: `CollectionSelectionService` (resolução por id/nome com precedência clara) e os use cases `SelectWorkspaceUseCase`/`SelectCollectionUseCase`/`ResolveCollectionUseCase`/`ClearWorkspaceUseCase`/`ClearCollectionUseCase`/`ListWorkspacesUseCase`/`ListCollectionsUseCase`. A seleção ativa é persistida localmente (`FileSelectionRepository`) guardando apenas `workspace_id`/`collection_id` — nunca API key ou nomes.
+- **Integração com a API do Postman**: `PostmanApiClient` (via `urllib`, sem dependências de runtime novas), com leitura (`PostmanWorkspaceRepository`/`PostmanCollectionRepository`) e atualização (`update`, HTTP PUT), testados contra um servidor HTTP local (sem mocks).
+- **Seleção de Workspace/Collection**: `CollectionSelectionService` (resolução por id/nome com precedência clara) e os use cases `SelectWorkspaceUseCase`/`SelectCollectionUseCase`/`ResolveCollectionUseCase`/`ClearWorkspaceUseCase`/`ClearCollectionUseCase`/`ListWorkspacesUseCase`/`ListCollectionsUseCase`. A seleção ativa é persistida localmente (`FileSelectionRepository`) guardando apenas `workspace_id`/`collection_id` — nunca API key ou nomes. Seleções temporárias (override por id/nome numa chamada pontual) nunca alteram a seleção ativa persistida.
 - **Managed Block Merger**: mescla blocos gerados (`// <api-quality-agent:block id="...">...`) preservando código manual ao redor, com detecção de blocos duplicados/não fechados/corrompidos.
 - **Diff Engine** e **Approval Policy**: comparam duas versões de uma Collection (requests, scripts, blocos gerenciados, variáveis) e decidem se uma atualização pode prosseguir (toda remoção é risco alto; `dry_run` sempre bloqueia).
 - **Orquestração de geração** (`GenerateCollectionTestsUseCase` + `AgentOrchestrator`): para a Collection selecionada, executa o pipeline completo — parsing, análise, schema, estratégia, geração de scripts, merge em memória e diff — sem alterar a Collection original nem atualizar remotamente. Uma falha em um request específico não aborta os demais (resultado parcial, com contexto registrado). Os artefatos (scripts gerados e diff) são salvos isolados por `workspace_id`/`collection_id`/`execution_id` via `LocalArtifactRepository`.
+- **Atualização remota segura** (`UpdateCollectionUseCase`): aplica em memória o resultado já aprovado via diff, atualizando *somente* a Collection selecionada (nunca por nome, nunca todas). Backup local da versão original antes de qualquer chamada remota (`LocalBackupRepository`): escrita atômica, nome único com timestamp e hash SHA-256, verificação de integridade, permissões restritivas de melhor esforço, retenção configurável e proteção contra versionamento acidental (`.gitignore`). O resultado devolvido carrega apenas metadados seguros (nunca o documento, o backup ou a resposta completa da API).
+- **Newman Adapter + `RunCollectionUseCase`**: executa a Collection selecionada (ou um artefato local já gerado) via `subprocess` (sem shell, com timeout configurável), separando estruturalmente falhas de teste de falhas de infraestrutura (executável ausente, timeout, Collection inválida, erro inesperado). Segredos do arquivo de Environment do Postman (`"type": "secret"`) são mascarados na saída antes de entrarem no resultado.
+- **Report Engine** (`reporting/`): monta um relatório estruturado (execução, Workspace/Collection, endpoints, avisos, diff, atualização, execução do Newman, artefatos) a partir dos resultados já produzidos pelas etapas anteriores, com serialização JSON (schema de topo estável), HTML (com escaping) e resumo textual para CLI — nunca inclui corpo de requisição/resposta, headers ou blocos de autenticação brutos.
+- **Snapshots de contrato** (`ContractSnapshot` + `ContractComparisonEngine`): persistem uma representação puramente estrutural (schema, status codes, content types — nunca valores reais) por Workspace/Collection/método/endpoint, e comparam duas versões de forma determinística (campo adicionado/removido, mudança de tipo/`required`/enum, status code, content type). Atualizar um baseline existente exige `overwrite=True` explícito.
+- **Testes de aceitação ponta a ponta** (`tests/acceptance/`): validam os fluxos completos do SAD compondo os componentes reais acima (sem mocks internos — só um servidor Postman local simulado e um processo Newman simulado), incluindo alternância entre Collections, isolamento de artefatos e confirmação de que a atualização remota simulada nunca atinge uma Collection não selecionada. Matriz requisito×teste e limitações conhecidas do MVP em `tests/acceptance/README.md`.
 
-Ainda não implementados: comandos de CLI para seleção de Workspace/Collection e para o fluxo de geração; atualização remota efetiva de Collections no Postman (a `ApprovalPolicy`/`DiffEngine` já existem, mas o comando de aplicação ainda não foi conectado); execução via Newman; relatórios (Report Engine).
+Principais limitações atuais (detalhadas em `tests/acceptance/README.md`): não há comando de CLI para selecionar/trocar o Workspace ativo (`list`/`generate` dependem de uma seleção já feita — hoje só via composição em Python, ver `tests/acceptance/conftest.py::build_app`) nem para atualização remota, execução via Newman, relatórios ou snapshots de contrato, todos já implementados e testados na camada de aplicação; a geração de testes (schema → estratégia → script) só existe para Collections Postman, não para especificações OpenAPI (que param na etapa de análise); `ExecutionMode.OFFLINE` não é usado por nenhum caminho de produção; snapshots de contrato ainda não estão conectados a nenhum fluxo de geração/atualização; sem relatório de cobertura de código configurado no projeto.
 
 ## Instalação local
 
@@ -33,6 +38,105 @@ python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
+
+## Como usar
+
+### Instalação e configuração
+
+Depois de instalado (`pip install -e ".[dev]"`), o executável `api-quality-agent` fica disponível no ambiente (registrado via `[project.scripts]`). A API Key do Postman é lida da variável de ambiente `POSTMAN_API_KEY` — nunca de um arquivo, argumento de linha de comando ou de qualquer valor persistido em disco:
+
+```bash
+export POSTMAN_API_KEY="sua-chave-aqui"        # Windows (PowerShell): $env:POSTMAN_API_KEY = "sua-chave-aqui"
+api-quality-agent config show                  # confirma que a chave está configurada (mascarada)
+api-quality-agent doctor                       # verifica pré-requisitos locais
+```
+
+### Uso pela linha de comando
+
+```bash
+api-quality-agent --help
+api-quality-agent --version
+api-quality-agent version
+
+# Lista as Collections do Workspace ativo
+api-quality-agent list
+
+# Gera e aplica os testes em uma Collection específica, por ID...
+api-quality-agent generate --collection-id 31333303-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+
+# ...ou por nome (deve ser único no Workspace; se houver mais de uma Collection
+# com esse nome, o comando lista os IDs e pede para usar --collection-id)...
+api-quality-agent generate --collection-name "Fake Store API Collection"
+
+# ...ou pelo índice mostrado por `list`...
+api-quality-agent generate 2
+
+# ...ou interativamente, escolhendo a partir da listagem exibida no terminal
+api-quality-agent generate
+
+# Pula a confirmação final (útil em scripts/automação)
+api-quality-agent generate --collection-id <id> --yes
+```
+
+Apenas uma forma de seleção pode ser usada por vez (ID, nome ou índice); combiná-las é rejeitado antes de qualquer chamada de rede. Sem `--yes`, o comando sempre pede confirmação antes de gerar/aplicar os testes; qualquer resposta que não seja um "sim" reconhecido (incluindo Ctrl+C) cancela a operação sem alterar nada. A seleção feita por `--collection-id`/`--collection-name`/índice/interativa é sempre temporária: nunca sobrescreve a seleção ativa persistida em `~/.api-quality-agent/selection.json`.
+
+**Limitação atual**: ainda não existe um comando de CLI para escolher/trocar o Workspace ativo — `list` e `generate` exigem que já exista uma seleção de Workspace salva (ver seção "Fluxos ainda sem comando de CLI" abaixo para configurá-la via Python). Os scripts de exemplo antigos em `local/` (ex.: `select_collection_and_generate.py`, com `COLLECTION_ID` editado manualmente no código) não são mais necessários para gerar testes — `api-quality-agent generate` os substitui.
+
+### Fluxos ainda sem comando de CLI (disponíveis via Python)
+
+Seleção de Workspace, atualização remota, execução via Newman, relatórios e snapshots de contrato já estão implementados e testados (ver "Estado atual"), mas hoje só são acionáveis compondo as classes diretamente em Python — não há comando de CLI para eles. Exemplo mínimo (selecionar Workspace/Collection e gerar testes):
+
+```python
+import os
+
+from api_quality_agent.adapters.config import FileSelectionRepository
+from api_quality_agent.adapters.filesystem import LocalArtifactRepository
+from api_quality_agent.adapters.postman import (
+    PostmanApiClient,
+    PostmanCollectionRepository,
+    PostmanWorkspaceRepository,
+)
+from api_quality_agent.application.orchestration import AgentOrchestrator
+from api_quality_agent.application.use_cases import (
+    GenerateCollectionTestsUseCase,
+    GetCurrentWorkspaceUseCase,
+    ResolveCollectionUseCase,
+    SelectCollectionUseCase,
+    SelectWorkspaceUseCase,
+)
+from api_quality_agent.domain.services import (
+    ApiAnalysisEngine,
+    CollectionSelectionService,
+    DiffEngine,
+    ManagedBlockMerger,
+    SchemaInferenceEngine,
+    TestStrategyEngine,
+)
+from api_quality_agent.generators import PostmanTestGenerator
+
+client = PostmanApiClient(os.environ["POSTMAN_API_KEY"])
+workspace_repository = PostmanWorkspaceRepository(client)
+collection_repository = PostmanCollectionRepository(client)
+selection_repository = FileSelectionRepository()  # persiste em ~/.api-quality-agent/selection.json
+selection_service = CollectionSelectionService(collection_repository)
+
+SelectWorkspaceUseCase(workspace_repository, selection_repository).execute(workspace_name="Meu Workspace")
+SelectCollectionUseCase(selection_service, selection_repository).execute(collection_name="Minha Collection")
+
+orchestrator = AgentOrchestrator(
+    ApiAnalysisEngine(), SchemaInferenceEngine(), TestStrategyEngine(),
+    PostmanTestGenerator(), ManagedBlockMerger(), DiffEngine(),
+)
+generate = GenerateCollectionTestsUseCase(
+    GetCurrentWorkspaceUseCase(selection_repository),
+    ResolveCollectionUseCase(selection_service, collection_repository, selection_repository),
+    collection_repository, orchestrator, LocalArtifactRepository(),
+)
+result = generate.execute()
+print(f"{len(result.endpoint_outcomes)} endpoints processados; diff com mudanças: {result.diff.has_changes}")
+```
+
+A mesma composição, estendida com atualização remota (`UpdateCollectionUseCase`), execução via Newman (`RunCollectionUseCase` + `NewmanAdapter`) e relatório (`ReportEngine`), está em `tests/acceptance/conftest.py::build_app` — é a montagem de referência, validada pela suíte de aceitação. `tests/acceptance/README.md` documenta a jornada completa (seleção → geração → atualização → execução → relatório) passo a passo.
 
 ## Comandos de qualidade
 

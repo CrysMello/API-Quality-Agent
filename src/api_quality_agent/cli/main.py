@@ -3,7 +3,13 @@ import sys
 from collections.abc import Sequence
 
 from api_quality_agent import __version__
-from api_quality_agent.cli.commands import config_command, doctor_command
+from api_quality_agent.cli.commands import (
+    config_command,
+    doctor_command,
+    generate_command,
+    list_command,
+    version_command,
+)
 from api_quality_agent.cli.exit_codes import resolve_exit_code
 from api_quality_agent.domain.exceptions import ApiQualityAgentError
 
@@ -24,6 +30,9 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     config_command.register(subparsers)
     doctor_command.register(subparsers)
+    list_command.register(subparsers)
+    generate_command.register(subparsers)
+    version_command.register(subparsers)
 
     return parser
 
