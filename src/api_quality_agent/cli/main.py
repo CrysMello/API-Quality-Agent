@@ -8,6 +8,7 @@ from api_quality_agent.cli.commands import (
     doctor_command,
     generate_command,
     list_command,
+    report_command,
     run_command,
     update_command,
     version_command,
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     generate_command.register(subparsers)
     update_command.register(subparsers)
     run_command.register(subparsers)
+    report_command.register(subparsers)
     version_command.register(subparsers)
 
     return parser

@@ -1,0 +1,189 @@
+from datetime import datetime
+from html import escape
+
+from api_quality_agent.reporting.report import Report, ReportExecutionSection
+
+_STATUS_LABELS = {
+    "infrastructure_failure": "INFRASTRUCTURE FAILURE",
+    "passed": "PASSED",
+    "failed": "FAILED",
+}
+_STATUS_ICONS = {"passed": "✓", "failed": "✗", "infrastructure_failure": "⚠"}
+
+
+def render_execution_report_html(report: Report, *, source_path: str, schema_version: str) -> str:
+    # Renderer dedicado ao relatório produzido a partir de um result.json
+    # (api-quality-agent report) — layout com cards/barra de progresso,
+    # diferente do render_report_html() genérico usado por generate/update.
+    # Reaproveita o mesmo Report/ReportExecutionSection do ReportEngine;
+    # todo texto vindo do result.json passa por escape() antes de entrar no
+    # HTML, e nenhum CSS/JS remoto é referenciado (autocontido, offline).
+    execution = report.execution
+    status = _status(execution)
+
+    title = _e(report.collection_name or report.collection_id or "Execution Report")
+    workspace_display = _e(report.workspace_name) or "N/A"
+    collection_display = _e(report.collection_name) or "N/A"
+
+    return f"""<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title} — API Quality Agent</title>
+<style>{_CSS}</style>
+</head>
+<body>
+<header>
+  <p class="brand">API Quality Agent</p>
+  <h1>Execution Report</h1>
+  <p class="status status-{status}"><span aria-hidden="true">{_STATUS_ICONS[status]}</span> {_STATUS_LABELS[status]}</p>
+  <ul class="header-meta">
+    <li><strong>Workspace:</strong> {workspace_display}</li>
+    <li><strong>Collection:</strong> {collection_display}</li>
+    <li><strong>Data:</strong> {_format_datetime(report.generated_at)}</li>
+  </ul>
+</header>
+
+<main>
+{_render_cards(execution)}
+{_render_summary(execution)}
+{_render_information(report, execution)}
+{_render_failures(execution)}
+{_render_metadata(source_path, report.generated_at, schema_version)}
+</main>
+</body>
+</html>"""
+
+
+def _status(execution: ReportExecutionSection) -> str:
+    if execution.infrastructure_failure is not None:
+        return "infrastructure_failure"
+    return "passed" if execution.success else "failed"
+
+
+def _render_cards(execution: ReportExecutionSection) -> str:
+    passed = _passed(execution)
+    cards = [
+        ("Requests", execution.total_requests),
+        ("Assertions", execution.total_assertions),
+        ("Passed", passed),
+        ("Failed", execution.failed_assertions),
+    ]
+    items = "".join(
+        f'<div class="card"><p class="card-value">{_e(str(value)) if value is not None else "N/A"}</p>'
+        f'<p class="card-label">{_e(label)}</p></div>'
+        for label, value in cards
+    )
+    return f'<section aria-label="Resumo em números"><div class="cards">{items}</div></section>'
+
+
+def _passed(execution: ReportExecutionSection) -> int | None:
+    if execution.total_assertions is None or execution.failed_assertions is None:
+        return None
+    return execution.total_assertions - execution.failed_assertions
+
+
+def _render_summary(execution: ReportExecutionSection) -> str:
+    total = execution.total_assertions or 0
+    failed = execution.failed_assertions or 0
+    passed = total - failed
+    pass_rate = (passed / total * 100) if total > 0 else 0.0
+    return f"""<section aria-label="Resumo estatístico">
+  <h2>Resumo</h2>
+  <div class="progress" role="progressbar" aria-valuenow="{pass_rate:.0f}" aria-valuemin="0" aria-valuemax="100">
+    <div class="progress-bar" style="width:{pass_rate:.1f}%"></div>
+  </div>
+  <p>{pass_rate:.1f}% das assertions passaram ({passed} de {total}).</p>
+</section>"""
+
+
+def _render_information(report: Report, execution: ReportExecutionSection) -> str:
+    rows = [
+        ("Workspace", _e(report.workspace_name) or "N/A"),
+        ("Collection", _e(report.collection_name) or "N/A"),
+        ("Started", _format_datetime(execution.started_at) if execution.started_at else "N/A"),
+        ("Finished", _format_datetime(execution.finished_at) if execution.finished_at else "N/A"),
+        (
+            "Duration",
+            f"{execution.duration_seconds:.1f} s" if execution.duration_seconds is not None else "N/A",
+        ),
+        ("Agent Version", _e(report.agent_version)),
+    ]
+    rows_html = "".join(f'<tr><th scope="row">{label}</th><td>{value}</td></tr>' for label, value in rows)
+    return f'<section aria-label="Informações"><h2>Informações</h2><table>{rows_html}</table></section>'
+
+
+def _render_failures(execution: ReportExecutionSection) -> str:
+    if execution.infrastructure_failure is not None:
+        return (
+            '<section aria-label="Falhas"><h2>Falhas</h2>'
+            f"<p><strong>Falha de infraestrutura:</strong> "
+            f"{_e(execution.infrastructure_failure.failure_type)} — "
+            f"{_e(execution.infrastructure_failure.message)}</p></section>"
+        )
+    if not execution.failed_assertions:
+        return '<section aria-label="Falhas"><h2>Falhas</h2><p>Nenhuma falha encontrada.</p></section>'
+    return (
+        '<section aria-label="Falhas"><h2>Falhas</h2>'
+        f"<p>{execution.failed_assertions} assertion(s) falharam. "
+        "Detalhamento por request/teste não está disponível neste resultado.</p></section>"
+    )
+
+
+def _render_metadata(source_path: str, generated_at: datetime, schema_version: str) -> str:
+    rows = [
+        ("Arquivo de origem", _e(source_path)),
+        ("Data de geração", _format_datetime(generated_at)),
+        ("Schema", _e(schema_version)),
+        ("Formato", "HTML"),
+    ]
+    rows_html = "".join(f'<tr><th scope="row">{label}</th><td>{value}</td></tr>' for label, value in rows)
+    return f'<section aria-label="Metadados"><h2>Metadados</h2><table>{rows_html}</table></section>'
+
+
+def _format_datetime(value: datetime) -> str:
+    return escape(value.strftime("%Y-%m-%d %H:%M:%S"))
+
+
+def _e(value: str | None) -> str:
+    return escape(value) if value else ""
+
+
+_CSS = """
+:root { color-scheme: light dark; }
+body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; padding: 0;
+  background: #f7f7f8; color: #1a1a1a; }
+@media (prefers-color-scheme: dark) { body { background: #16171a; color: #eaeaea; } }
+header { padding: 1.5rem; background: #ffffff; border-bottom: 1px solid #e0e0e0; }
+@media (prefers-color-scheme: dark) { header { background: #1f2023; border-color: #333; } }
+.brand { margin: 0; font-weight: 600; color: #6b6b6b; text-transform: uppercase; font-size: 0.8rem;
+  letter-spacing: 0.05em; }
+h1 { margin: 0.2rem 0 0.8rem; font-size: 1.6rem; }
+.status { display: inline-block; padding: 0.4rem 0.9rem; border-radius: 999px; font-weight: 700;
+  font-size: 0.95rem; }
+.status-passed { background: #dcfce7; color: #166534; }
+.status-failed { background: #fee2e2; color: #991b1b; }
+.status-infrastructure_failure { background: #fef3c7; color: #92400e; }
+@media (prefers-color-scheme: dark) {
+  .status-passed { background: #14532d; color: #bbf7d0; }
+  .status-failed { background: #7f1d1d; color: #fecaca; }
+  .status-infrastructure_failure { background: #78350f; color: #fde68a; }
+}
+.header-meta { list-style: none; margin: 1rem 0 0; padding: 0; display: flex; gap: 1.5rem; flex-wrap: wrap; }
+main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+section { background: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem; }
+@media (prefers-color-scheme: dark) { section { background: #1f2023; border-color: #333; } }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 1rem; }
+.card { text-align: center; padding: 0.75rem; border-radius: 6px; background: #f2f2f3; }
+@media (prefers-color-scheme: dark) { .card { background: #2a2b2f; } }
+.card-value { font-size: 1.6rem; font-weight: 700; margin: 0; }
+.card-label { margin: 0.2rem 0 0; color: #6b6b6b; font-size: 0.85rem; }
+.progress { background: #e5e5e5; border-radius: 999px; height: 12px; overflow: hidden; }
+@media (prefers-color-scheme: dark) { .progress { background: #333; } }
+.progress-bar { background: #16a34a; height: 100%; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #eee; }
+@media (prefers-color-scheme: dark) { th, td { border-color: #333; } }
+"""

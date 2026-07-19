@@ -64,6 +64,8 @@ def _handle_run(args: argparse.Namespace) -> int:
         result,
         collection_id=selected.id,
         collection_name=selected.name,
+        workspace_id=workspace_ref.id,
+        workspace_name=workspace_ref.name,
         started_at=started_at,
         finished_at=finished_at,
     )
@@ -82,6 +84,8 @@ def _persist_result(
     *,
     collection_id: str,
     collection_name: str,
+    workspace_id: str,
+    workspace_name: str,
     started_at: datetime,
     finished_at: datetime,
 ) -> None:
@@ -94,6 +98,8 @@ def _persist_result(
             result,
             collection_id=collection_id,
             collection_name=collection_name,
+            workspace_id=workspace_id,
+            workspace_name=workspace_name,
             started_at=started_at,
             finished_at=finished_at,
         )

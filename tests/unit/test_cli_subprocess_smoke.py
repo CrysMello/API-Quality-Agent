@@ -39,6 +39,7 @@ def test_root_help_exits_zero_and_lists_subcommands():
     assert "generate" in result.stdout
     assert "update" in result.stdout
     assert "run" in result.stdout
+    assert "report" in result.stdout
     assert "version" in result.stdout
 
 
@@ -89,6 +90,15 @@ def test_run_help_exits_zero_and_documents_flags():
     assert "--collection-id" in result.stdout
     assert "--collection-name" in result.stdout
     assert "--newman-executable" in result.stdout
+
+
+def test_report_help_exits_zero_and_documents_flags():
+    result = _run_cli("report", "--help")
+
+    assert result.returncode == 0
+    assert "--input" in result.stdout
+    assert "--output" in result.stdout
+    assert "--overwrite" in result.stdout
 
 
 def test_workspace_help_exits_zero_and_lists_subcommands():
@@ -176,6 +186,30 @@ def test_generate_from_file_works_in_a_real_subprocess_without_api_key(no_api_ke
     assert result.returncode == 0
     assert "Subprocess Collection" in result.stdout
     assert (tmp_path / "artifacts" / "local").is_dir()
+
+
+def test_report_works_in_a_real_subprocess_without_api_key(no_api_key_env, tmp_path):
+    result_payload = {
+        "schema_version": "1.1",
+        "execution": {
+            "started_at": "2026-07-20T10:35:12+00:00",
+            "finished_at": "2026-07-20T10:35:46+00:00",
+            "duration_seconds": 34.1,
+        },
+        "workspace": {"id": "ws-1", "name": "QA Workspace"},
+        "collection": {"id": "col-1", "name": "Subprocess Collection"},
+        "summary": {"requests": 1, "assertions": 1, "passed": 1, "failed": 0},
+        "success": True,
+        "infrastructure_failure": None,
+    }
+    result_path = tmp_path / "result.json"
+    result_path.write_text(json.dumps(result_payload), encoding="utf-8")
+
+    result = _run_cli("report", "--input", "result.json", env=no_api_key_env, cwd=str(tmp_path))
+
+    assert result.returncode == 0
+    assert "Subprocess Collection" in result.stdout or "Report generated successfully" in result.stdout
+    assert (tmp_path / "report.html").is_file()
 
 
 def test_unknown_command_exits_with_argparse_usage_error():

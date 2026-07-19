@@ -1,5 +1,6 @@
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 
 from api_quality_agent import __version__
 from api_quality_agent.application.orchestration import CollectionGenerationResult
@@ -10,10 +11,14 @@ from api_quality_agent.application.use_cases import CollectionUpdateResult
 from api_quality_agent.domain.models import (
     ArtifactLocation,
     ExecutionResult,
+    ExecutionResultRecord,
     GeneratedArtifact,
     SelectionOrigin,
 )
 from api_quality_agent.ports.outbound import ArtifactRepository
+from api_quality_agent.reporting.execution_report_html_renderer import (
+    render_execution_report_html,
+)
 from api_quality_agent.reporting.report import (
     Report,
     ReportDiffEntry,
@@ -80,6 +85,65 @@ class ReportEngine:
                 location.path for location in generation_result.artifact_locations
             ),
             agent_version=agent_version,
+        )
+
+    def generate_from_execution_summary(
+        self,
+        record: ExecutionResultRecord,
+        *,
+        agent_version: str = __version__,
+    ) -> Report:
+        # Segundo ponto de entrada do ReportEngine: o fluxo `run` nunca
+        # produz um CollectionGenerationResult (não há etapa de geração),
+        # então generate() não pode ser usado para relatórios construídos a
+        # partir de um result.json já persistido. Seções que só existem no
+        # fluxo de geração (endpoints, diff, update) ficam semanticamente
+        # vazias — nunca inventadas — e o renderer HTML já trata isso.
+        return Report(
+            execution_id=_execution_id_from_source(record.source_path),
+            generated_at=self._clock(),
+            duration_seconds=record.duration_seconds,
+            mode="run",
+            source="newman",
+            workspace_id=record.workspace_id,
+            workspace_name=record.workspace_name,
+            collection_id=record.collection_id,
+            collection_name=record.collection_name,
+            selection_origin="n/a",
+            endpoints=(),
+            analysis_warnings=(),
+            execution_warnings=(),
+            diff=ReportDiffSection(
+                entries=(), has_changes=False, has_removals=False, has_high_risk_changes=False
+            ),
+            update=ReportUpdateSection(
+                attempted=False,
+                approved=None,
+                updated=None,
+                dry_run=None,
+                denial_reason=None,
+                backup_created=None,
+                document_hash=None,
+                status_code=None,
+            ),
+            execution=_build_execution_section_from_record(record),
+            artifacts=(),
+            agent_version=agent_version,
+        )
+
+    def render_execution_summary_html(
+        self,
+        record: ExecutionResultRecord,
+        *,
+        agent_version: str = __version__,
+    ) -> str:
+        # Único ponto que a CLI (report_command.py) precisa chamar: monta o
+        # Report a partir do result.json já lido e reaproveita o renderer
+        # HTML dedicado — a CLI nunca importa reporting/* diretamente nem
+        # monta HTML por conta própria.
+        report = self.generate_from_execution_summary(record, agent_version=agent_version)
+        return render_execution_report_html(
+            report, source_path=record.source_path, schema_version=record.schema_version
         )
 
     def save(
@@ -233,4 +297,39 @@ def _build_execution_section(
             for failure in execution_result.test_failures
         ),
         infrastructure_failure=infrastructure_failure,
+    )
+
+
+def _execution_id_from_source(source_path: str) -> str:
+    # O diretório de origem é nomeado "run_<timestamp>" (ver
+    # JsonExecutionResultRepository) — já é um identificador único por
+    # execução, então é reaproveitado como execution_id em vez de inventar
+    # um novo.
+    name = Path(source_path).resolve().parent.name
+    return name.removeprefix("run_") if name.startswith("run_") else name
+
+
+def _build_execution_section_from_record(record: ExecutionResultRecord) -> ReportExecutionSection:
+    infrastructure_failure = None
+    if record.infrastructure_failure is not None:
+        infrastructure_failure = ReportInfrastructureFailure(
+            failure_type=record.infrastructure_failure.failure_type.value,
+            message=record.infrastructure_failure.message,
+        )
+
+    return ReportExecutionSection(
+        executed=True,
+        success=record.success,
+        exit_code=None,
+        duration_seconds=record.duration_seconds,
+        total_requests=record.total_requests,
+        total_assertions=record.total_assertions,
+        failed_assertions=record.failed_assertions,
+        # result.json só guarda contagens agregadas, nunca o detalhamento
+        # por request/teste (isso nunca foi persistido) — não há como
+        # reconstruir a tabela de falhas individuais sem inventar dados.
+        test_failures=(),
+        infrastructure_failure=infrastructure_failure,
+        started_at=record.started_at,
+        finished_at=record.finished_at,
     )

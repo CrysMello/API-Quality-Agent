@@ -13,6 +13,11 @@ from api_quality_agent.domain.exceptions.errors import (
     SelectionError,
     UpdateNotApprovedError,
 )
+from api_quality_agent.domain.exceptions.execution_result_errors import (
+    InvalidExecutionResultError,
+    ReportAlreadyExistsError,
+    UnsupportedExecutionResultSchemaError,
+)
 from api_quality_agent.domain.exceptions.input_errors import (
     EmptyInputError,
     InputEncodingError,
@@ -53,12 +58,15 @@ __all__ = [
     "InputSizeLimitExceededError",
     "IntegrationError",
     "InvalidApiSpecificationError",
+    "InvalidExecutionResultError",
     "InvalidJsonError",
     "InvalidPostmanCollectionError",
+    "ReportAlreadyExistsError",
     "ResourceNotFoundError",
     "SelectionError",
     "UnclosedManagedBlockError",
     "UnresolvedReferenceError",
+    "UnsupportedExecutionResultSchemaError",
     "UnsupportedInputExtensionError",
     "UnsupportedSpecificationVersionError",
     "UpdateNotApprovedError",

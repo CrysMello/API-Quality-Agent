@@ -54,6 +54,8 @@ def test_persisted_json_has_expected_structure():
         result,
         collection_id="col-1",
         collection_name="PetStore",
+        workspace_id="ws-1",
+        workspace_name="QA Workspace",
         started_at=_STARTED_AT,
         finished_at=_FINISHED_AT,
     )
@@ -61,11 +63,13 @@ def test_persisted_json_has_expected_structure():
     assert location.path == "artifacts/run_fake/result.json"
     payload = json.loads(repository.captured_content)
     assert payload == {
+        "schema_version": "1.1",
         "execution": {
             "started_at": _STARTED_AT.isoformat(),
             "finished_at": _FINISHED_AT.isoformat(),
             "duration_seconds": 34.1,
         },
+        "workspace": {"id": "ws-1", "name": "QA Workspace"},
         "collection": {"id": "col-1", "name": "PetStore"},
         "summary": {
             "requests": 28,
@@ -76,6 +80,23 @@ def test_persisted_json_has_expected_structure():
         "success": True,
         "infrastructure_failure": None,
     }
+
+
+def test_persisted_json_workspace_is_null_when_not_provided():
+    repository = _CapturingRepository()
+    use_case = PersistExecutionResultUseCase(repository)
+    result = _success_result()
+
+    use_case.execute(
+        result,
+        collection_id="col-1",
+        collection_name="PetStore",
+        started_at=_STARTED_AT,
+        finished_at=_FINISHED_AT,
+    )
+
+    payload = json.loads(repository.captured_content)
+    assert payload["workspace"] == {"id": None, "name": None}
 
 
 def test_infrastructure_failure_is_serialized_as_structured_object():
@@ -142,7 +163,9 @@ def test_persisted_json_never_contains_the_full_collection_document():
 
     payload = json.loads(repository.captured_content)
     assert set(payload.keys()) == {
+        "schema_version",
         "execution",
+        "workspace",
         "collection",
         "summary",
         "success",

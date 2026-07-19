@@ -18,6 +18,9 @@ from api_quality_agent.application.use_cases.get_effective_configuration import 
 )
 from api_quality_agent.application.use_cases.list_collections import ListCollectionsUseCase
 from api_quality_agent.application.use_cases.list_workspaces import ListWorkspacesUseCase
+from api_quality_agent.application.use_cases.load_execution_result import (
+    LoadExecutionResultUseCase,
+)
 from api_quality_agent.application.use_cases.persist_execution_result import (
     PersistExecutionResultUseCase,
 )
@@ -34,6 +37,7 @@ from api_quality_agent.application.use_cases.update_collection import (
     CollectionUpdateResult,
     UpdateCollectionUseCase,
 )
+from api_quality_agent.application.use_cases.write_report import WriteReportUseCase
 
 __all__ = [
     "ClearCollectionUseCase",
@@ -48,12 +52,14 @@ __all__ = [
     "GetCurrentWorkspaceUseCase",
     "ListCollectionsUseCase",
     "ListWorkspacesUseCase",
+    "LoadExecutionResultUseCase",
     "PersistExecutionResultUseCase",
     "ResolveCollectionUseCase",
     "RunCollectionUseCase",
     "SelectCollectionUseCase",
     "SelectWorkspaceUseCase",
     "UpdateCollectionUseCase",
+    "WriteReportUseCase",
     "get_effective_configuration",
     "run_diagnostics",
 ]

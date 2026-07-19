@@ -3,7 +3,9 @@ from dataclasses import dataclass
 
 from api_quality_agent.adapters.config import FileSelectionRepository
 from api_quality_agent.adapters.filesystem import (
+    HtmlReportWriter,
     InputResolver,
+    JsonExecutionResultReader,
     JsonExecutionResultRepository,
     LocalArtifactRepository,
     LocalBackupRepository,
@@ -21,11 +23,13 @@ from api_quality_agent.application.use_cases import (
     GetCurrentWorkspaceUseCase,
     ListCollectionsUseCase,
     ListWorkspacesUseCase,
+    LoadExecutionResultUseCase,
     PersistExecutionResultUseCase,
     ResolveCollectionUseCase,
     RunCollectionUseCase,
     SelectWorkspaceUseCase,
     UpdateCollectionUseCase,
+    WriteReportUseCase,
 )
 from api_quality_agent.domain.exceptions import ConfigurationError, InputError, ResourceNotFoundError
 from api_quality_agent.domain.models import CollectionRef, WorkspaceRef
@@ -44,10 +48,13 @@ from api_quality_agent.ports.outbound import (
     BackupRepository,
     CollectionRepository,
     CollectionRunner,
+    ExecutionResultReader,
     ExecutionResultRepository,
+    ReportWriter,
     SelectionRepository,
     WorkspaceRepository,
 )
+from api_quality_agent.reporting import ReportEngine
 
 POSTMAN_API_KEY_ENV_VAR = "POSTMAN_API_KEY"
 NEWMAN_EXECUTABLE_ENV_VAR = "NEWMAN_EXECUTABLE"
@@ -179,6 +186,30 @@ def build_offline_context(
         generate_from_file_use_case=GenerateTestsFromDocumentUseCase(
             _build_orchestrator(), artifact_repository or LocalArtifactRepository()
         ),
+    )
+
+
+@dataclass
+class ReportCliContext:
+    # Composição paralela a CliContext para o comando `report`: nunca requer
+    # POSTMAN_API_KEY nem toca a API do Postman — report só lê um result.json
+    # já persistido localmente e gera o HTML a partir dele.
+    load_execution_result_use_case: LoadExecutionResultUseCase
+    write_report_use_case: WriteReportUseCase
+    report_engine: ReportEngine
+
+
+def build_report_context(
+    *,
+    execution_result_reader: ExecutionResultReader | None = None,
+    report_writer: ReportWriter | None = None,
+) -> ReportCliContext:
+    return ReportCliContext(
+        load_execution_result_use_case=LoadExecutionResultUseCase(
+            execution_result_reader or JsonExecutionResultReader()
+        ),
+        write_report_use_case=WriteReportUseCase(report_writer or HtmlReportWriter()),
+        report_engine=ReportEngine(),
     )
 
 

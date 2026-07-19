@@ -1,3 +1,4 @@
+from api_quality_agent.reporting.execution_report_html_renderer import render_execution_report_html
 from api_quality_agent.reporting.report import (
     Report,
     ReportDiffEntry,
@@ -23,6 +24,7 @@ __all__ = [
     "ReportInfrastructureFailure",
     "ReportTestFailure",
     "ReportUpdateSection",
+    "render_execution_report_html",
     "render_report_html",
     "render_report_json",
     "render_report_summary",

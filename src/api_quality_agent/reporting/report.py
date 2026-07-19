@@ -69,6 +69,11 @@ class ReportExecutionSection:
     failed_assertions: int | None
     test_failures: tuple[ReportTestFailure, ...]
     infrastructure_failure: ReportInfrastructureFailure | None
+    # Só preenchidos quando o relatório vem de um result.json persistido
+    # (api-quality-agent report) — o ExecutionResult "ao vivo" do fluxo
+    # generate/update/run nunca teve início/fim absolutos, só duration.
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 @dataclass(frozen=True)

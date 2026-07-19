@@ -36,6 +36,7 @@ from api_quality_agent.domain.models.execution_context import ExecutionContext
 from api_quality_agent.domain.models.execution_mode import ExecutionMode
 from api_quality_agent.domain.models.execution_result import ExecutionResult
 from api_quality_agent.domain.models.execution_result_location import ExecutionResultLocation
+from api_quality_agent.domain.models.execution_result_record import ExecutionResultRecord
 from api_quality_agent.domain.models.generated_artifact import GeneratedArtifact
 from api_quality_agent.domain.models.infrastructure_failure import InfrastructureFailure
 from api_quality_agent.domain.models.infrastructure_failure_type import InfrastructureFailureType
@@ -128,6 +129,7 @@ __all__ = [
     "ExecutionMode",
     "ExecutionResult",
     "ExecutionResultLocation",
+    "ExecutionResultRecord",
     "GeneratedArtifact",
     "InfrastructureFailure",
     "InfrastructureFailureType",
