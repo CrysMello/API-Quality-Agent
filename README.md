@@ -157,3 +157,15 @@ pytest
 # Verificação de tipos
 mypy src
 ```
+
+## Author
+
+Projeto idealizado, arquitetado e mantido por Crystiane Mello.
+
+Este projeto foi desenvolvido utilizando uma abordagem de Human-directed AI development. Ferramentas de Inteligência Artificial foram utilizadas como apoio à análise, documentação e implementação, enquanto a concepção, as decisões de arquitetura, o direcionamento, a revisão, a validação e a manutenção permaneceram sob responsabilidade da autora.
+
+- **Nome**: Crystiane Mello
+- **Papéis**: Creator, Architect, Maintainer
+- **Abordagem de desenvolvimento**: Human-directed AI development
+- **GitHub**: [https://github.com/CrysMello](https://github.com/CrysMello)
+- **LinkedIn**: [https://www.linkedin.com/in/crystianemello/](https://www.linkedin.com/in/crystianemello/)

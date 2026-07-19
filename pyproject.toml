@@ -5,14 +5,19 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "api-quality-agent"
 version = "0.1.0"
-description = "Agente de automação de qualidade para APIs (CLI)"
+description = "Agente de automação de qualidade para APIs (CLI), idealizado, arquitetado e mantido por Crystiane Mello"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "MIT" }
-authors = [{ name = "Crys Mello" }]
+authors = [{ name = "Crystiane Mello" }]
+maintainers = [{ name = "Crystiane Mello" }]
 dependencies = [
     "PyYAML>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/CrysMello"
+LinkedIn = "https://www.linkedin.com/in/crystianemello/"
 
 [project.scripts]
 api-quality-agent = "api_quality_agent.cli.main:run"
