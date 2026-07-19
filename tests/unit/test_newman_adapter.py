@@ -1,5 +1,6 @@
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -270,3 +271,148 @@ def test_uses_a_real_subprocess_with_real_elapsed_time(tmp_path, monkeypatch):
 
     assert result.duration_seconds >= 0.15
     assert result.infrastructure_failure is None  # completou normalmente, após o sleep real
+
+
+# --- Relatório vem do arquivo exportado, nunca do stdout ------------------------------------
+
+
+def test_report_is_read_from_export_file_not_from_stdout(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "stdout_decoy")
+    adapter = _build_adapter()
+
+    result = adapter.run(collection_path=_minimal_collection(tmp_path))
+
+    # O stdout contém um relatório "chamariz" com total_requests=999; o
+    # resultado precisa vir do arquivo exportado (total_requests=1) — prova
+    # de que o stdout nunca é tratado como fonte do relatório.
+    assert result.total_requests == 1
+    assert result.success is True
+
+
+def test_fake_newman_does_not_print_report_json_to_stdout(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+    adapter = _build_adapter()
+
+    result = adapter.run(collection_path=_minimal_collection(tmp_path))
+
+    assert '"stats"' not in result.stdout
+    assert '"run"' not in result.stdout
+
+
+# --- Ausência do relatório / arquivo vazio ---------------------------------------------------
+
+
+def test_missing_report_file_is_reported_as_infrastructure_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "crash_no_output")
+    adapter = _build_adapter()
+
+    result = adapter.run(collection_path=_minimal_collection(tmp_path))
+
+    assert result.infrastructure_failure is not None
+    assert result.infrastructure_failure.failure_type == InfrastructureFailureType.UNEXPECTED_ERROR
+    assert "não gerou" in result.infrastructure_failure.message.lower()
+
+
+def test_empty_report_file_is_reported_as_infrastructure_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "empty_report")
+    adapter = _build_adapter()
+
+    result = adapter.run(collection_path=_minimal_collection(tmp_path))
+
+    assert result.infrastructure_failure is not None
+    assert result.infrastructure_failure.failure_type == InfrastructureFailureType.UNEXPECTED_ERROR
+    assert "vazio" in result.infrastructure_failure.message.lower()
+
+
+# --- Exit code diferente de zero, com stdout/stderr preservados -----------------------------
+
+
+def test_non_zero_exit_code_is_preserved_alongside_stdout_and_stderr(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "test_failures")
+    adapter = _build_adapter()
+
+    result = adapter.run(collection_path=_minimal_collection(tmp_path))
+
+    assert result.exit_code == 1
+    assert result.infrastructure_failure is None
+    assert isinstance(result.stdout, str)
+    assert isinstance(result.stderr, str)
+
+
+# --- Limpeza do diretório temporário ---------------------------------------------------------
+
+
+def test_temporary_report_directory_is_removed_after_success(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+    created_dirs: list[str] = []
+    original_mkdtemp = tempfile.mkdtemp
+
+    def _tracking_mkdtemp(*args, **kwargs):
+        path = original_mkdtemp(*args, **kwargs)
+        created_dirs.append(path)
+        return path
+
+    monkeypatch.setattr(tempfile, "mkdtemp", _tracking_mkdtemp)
+    adapter = _build_adapter()
+
+    adapter.run(collection_path=_minimal_collection(tmp_path))
+
+    assert len(created_dirs) == 1
+    assert not Path(created_dirs[0]).exists()
+
+
+def test_temporary_report_directory_is_removed_even_on_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "invalid_report")
+    created_dirs: list[str] = []
+    original_mkdtemp = tempfile.mkdtemp
+
+    def _tracking_mkdtemp(*args, **kwargs):
+        path = original_mkdtemp(*args, **kwargs)
+        created_dirs.append(path)
+        return path
+
+    monkeypatch.setattr(tempfile, "mkdtemp", _tracking_mkdtemp)
+    adapter = _build_adapter()
+
+    adapter.run(collection_path=_minimal_collection(tmp_path))
+
+    assert len(created_dirs) == 1
+    assert not Path(created_dirs[0]).exists()
+
+
+# --- Caminho com espaços -----------------------------------------------------------------------
+
+
+def test_works_with_collection_path_containing_spaces(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+    spaced_dir = tmp_path / "pasta com espaços"
+    spaced_dir.mkdir()
+    collection_path = _write_json(
+        spaced_dir,
+        "collection.json",
+        {
+            "info": {
+                "name": "Col",
+                "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+            },
+            "item": [],
+        },
+    )
+    adapter = _build_adapter()
+
+    result = adapter.run(collection_path=collection_path)
+
+    assert result.success is True
+
+
+# --- Nenhuma pasta newman/ criada no diretório de trabalho -----------------------------------
+
+
+def test_no_newman_folder_is_created_in_current_working_directory(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+    monkeypatch.chdir(tmp_path)
+    adapter = _build_adapter()
+
+    adapter.run(collection_path=_minimal_collection(tmp_path))
+
+    assert not (tmp_path / "newman").exists()

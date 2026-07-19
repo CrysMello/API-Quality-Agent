@@ -1,5 +1,7 @@
 import json
+import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,15 @@ from api_quality_agent.ports.outbound.collection_runner import DEFAULT_RUN_TIMEO
 from api_quality_agent.shared import mask_secret
 
 DEFAULT_NEWMAN_EXECUTABLE = "newman"
+_REPORT_FILENAME = "newman-report.json"
+
+
+class _NewmanReportNotGeneratedError(Exception):
+    pass
+
+
+class _InvalidNewmanReportError(Exception):
+    pass
 
 
 class NewmanAdapter:
@@ -60,7 +71,47 @@ class NewmanAdapter:
             )
 
         secret_values = _extract_secret_values(environment_path)
-        argv = [self._executable, *self._command_prefix, "run", collection_path, "--reporters", "json"]
+
+        # O relatório oficial do Newman é o arquivo exportado via
+        # --reporter-json-export, nunca o stdout do processo (o reporter
+        # "json" do Newman real escreve em disco — por padrão dentro de
+        # ./newman/ — e não imprime o relatório na saída de texto). Usamos
+        # um diretório temporário próprio para não "sujar" o projeto e para
+        # controlar exatamente o caminho lido.
+        report_dir = tempfile.mkdtemp(prefix="api-quality-agent-newman-")
+        report_path = str(Path(report_dir) / _REPORT_FILENAME)
+        try:
+            return self._run_with_report_export(
+                collection_path=collection_path,
+                environment_path=environment_path,
+                timeout_seconds=timeout_seconds,
+                report_path=report_path,
+                secret_values=secret_values,
+                start=start,
+            )
+        finally:
+            shutil.rmtree(report_dir, ignore_errors=True)
+
+    def _run_with_report_export(
+        self,
+        *,
+        collection_path: str,
+        environment_path: str | None,
+        timeout_seconds: float,
+        report_path: str,
+        secret_values: tuple[str, ...],
+        start: float,
+    ) -> ExecutionResult:
+        argv = [
+            self._executable,
+            *self._command_prefix,
+            "run",
+            collection_path,
+            "--reporters",
+            "json",
+            "--reporter-json-export",
+            report_path,
+        ]
         if environment_path is not None:
             argv += ["-e", environment_path]
 
@@ -99,14 +150,16 @@ class NewmanAdapter:
             )
 
         duration = time.monotonic() - start
+        # stdout/stderr nunca são a fonte do relatório — servem só para
+        # diagnóstico (mensagens do CLI, avisos, erros de execução).
         stdout = _mask(completed.stdout or "", secret_values)
         stderr = _mask(completed.stderr or "", secret_values)
 
         try:
-            total_requests, total_assertions, failed_assertions, failures = _parse_report(
-                completed.stdout or "", secret_values
+            total_requests, total_assertions, failed_assertions, failures = _read_report_file(
+                report_path, secret_values
             )
-        except ValueError as exc:
+        except (_NewmanReportNotGeneratedError, _InvalidNewmanReportError) as exc:
             return ExecutionResult(
                 collection_source=collection_path,
                 success=False,
@@ -118,7 +171,7 @@ class NewmanAdapter:
                 test_failures=(),
                 infrastructure_failure=InfrastructureFailure(
                     failure_type=InfrastructureFailureType.UNEXPECTED_ERROR,
-                    message=f"Não foi possível interpretar o relatório do Newman: {exc}",
+                    message=str(exc),
                 ),
                 stdout=stdout,
                 stderr=stderr,
@@ -224,17 +277,45 @@ def _as_str(value: Any, default: str) -> str:
     return value if isinstance(value, str) else default
 
 
-def _parse_report(
-    raw_stdout: str, secret_values: tuple[str, ...]
+def _read_report_file(
+    report_path: str, secret_values: tuple[str, ...]
 ) -> tuple[int, int, int, tuple[TestFailure, ...]]:
-    try:
-        payload = json.loads(raw_stdout)
-    except json.JSONDecodeError as exc:
-        raise ValueError("saída do Newman não é um JSON válido") from exc
+    path = Path(report_path)
+    if not path.exists():
+        raise _NewmanReportNotGeneratedError(
+            "O Newman não gerou o arquivo de relatório esperado; o processo "
+            "pode ter falhado antes de concluir a execução (consulte stdout/"
+            "stderr para diagnóstico)."
+        )
 
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise _NewmanReportNotGeneratedError(
+            f"Não foi possível ler o arquivo de relatório do Newman: {exc}"
+        ) from exc
+
+    if not raw_text.strip():
+        raise _InvalidNewmanReportError("O arquivo de relatório do Newman está vazio.")
+
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        raise _InvalidNewmanReportError(
+            f"Relatório do Newman não é um JSON válido: {exc}"
+        ) from exc
+
+    return _parse_report_payload(payload, secret_values)
+
+
+def _parse_report_payload(
+    payload: Any, secret_values: tuple[str, ...]
+) -> tuple[int, int, int, tuple[TestFailure, ...]]:
     run = _as_dict(payload).get("run")
     if not isinstance(run, dict):
-        raise ValueError("relatório do Newman não possui a estrutura esperada ('run' ausente)")
+        raise _InvalidNewmanReportError(
+            "Relatório do Newman não possui a estrutura esperada ('run' ausente)."
+        )
 
     stats = _as_dict(run.get("stats"))
     requests_stats = _as_dict(stats.get("requests"))
