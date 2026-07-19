@@ -2,7 +2,11 @@ import os
 from dataclasses import dataclass
 
 from api_quality_agent.adapters.config import FileSelectionRepository
-from api_quality_agent.adapters.filesystem import InputResolver, LocalArtifactRepository
+from api_quality_agent.adapters.filesystem import (
+    InputResolver,
+    LocalArtifactRepository,
+    LocalBackupRepository,
+)
 from api_quality_agent.adapters.postman import (
     PostmanApiClient,
     PostmanCollectionRepository,
@@ -17,6 +21,7 @@ from api_quality_agent.application.use_cases import (
     ListWorkspacesUseCase,
     ResolveCollectionUseCase,
     SelectWorkspaceUseCase,
+    UpdateCollectionUseCase,
 )
 from api_quality_agent.domain.exceptions import ConfigurationError, InputError, ResourceNotFoundError
 from api_quality_agent.domain.models import CollectionRef, WorkspaceRef
@@ -32,6 +37,7 @@ from api_quality_agent.generators import PostmanTestGenerator
 from api_quality_agent.parsers import PostmanCollectionParser
 from api_quality_agent.ports.outbound import (
     ArtifactRepository,
+    BackupRepository,
     CollectionRepository,
     SelectionRepository,
     WorkspaceRepository,
@@ -55,6 +61,7 @@ class CliContext:
     generate_use_case: GenerateCollectionTestsUseCase
     list_workspaces_use_case: ListWorkspacesUseCase
     select_workspace_use_case: SelectWorkspaceUseCase
+    update_use_case: UpdateCollectionUseCase
 
 
 def _build_orchestrator() -> AgentOrchestrator:
@@ -72,6 +79,7 @@ def build_context(
     *,
     artifact_repository: ArtifactRepository | None = None,
     selection_repository: SelectionRepository | None = None,
+    backup_repository: BackupRepository | None = None,
 ) -> CliContext:
     api_key = os.environ.get(POSTMAN_API_KEY_ENV_VAR)
     if not api_key:
@@ -115,6 +123,9 @@ def build_context(
         list_workspaces_use_case=ListWorkspacesUseCase(workspace_repository),
         select_workspace_use_case=SelectWorkspaceUseCase(
             workspace_repository, effective_selection_repository
+        ),
+        update_use_case=UpdateCollectionUseCase(
+            collection_repository, backup_repository or LocalBackupRepository()
         ),
     )
 

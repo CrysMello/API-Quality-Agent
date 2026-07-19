@@ -205,6 +205,27 @@ def test_generate_interactive_eof_cancels_operation(cli_env, selected_workspace,
     assert "cancelada" in capsys.readouterr().out
 
 
+def test_generate_keyboard_interrupt_during_final_confirmation_returns_cancelled_not_unexpected_error(
+    cli_env, selected_workspace, monkeypatch, capsys
+):
+    # Regressão: com --collection-id (sem seleção interativa), o Ctrl+C no
+    # prompt de confirmação final antes escapava sem tratamento e virava
+    # "Erro inesperado" (código 8) em vez de cancelamento (código 9).
+    configure_server(cli_env)
+
+    def _raise_keyboard_interrupt(*_a, **_k):
+        raise KeyboardInterrupt()
+
+    monkeypatch.setattr("builtins.input", _raise_keyboard_interrupt)
+
+    exit_code = main(["generate", "--collection-id", COLLECTION_A_ID])
+
+    assert exit_code == OPERATION_CANCELLED
+    captured = capsys.readouterr()
+    assert "cancelada" in captured.out
+    assert "inesperado" not in captured.err.lower()
+
+
 # --- Conflitos de seleção ----------------------------------------------------------------
 
 

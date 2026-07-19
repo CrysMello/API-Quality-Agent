@@ -6,9 +6,9 @@ A estrutura segue arquitetura hexagonal: o domínio (`domain/`) não depende de 
 
 ## Estado atual
 
-Já implementados (com testes automatizados — 689 testes, incluindo uma suíte de aceitação ponta a ponta em `tests/acceptance/`; mypy limpo):
+Já implementados (com testes automatizados — 727 testes, incluindo uma suíte de aceitação ponta a ponta em `tests/acceptance/`; mypy limpo):
 
-- **CLI instalável**: `--help`, `--version`, `config show`, `doctor`, `version`, `workspace list`, `workspace select`, `list` e `generate`. Todos reutilizam os use cases já existentes (nenhuma regra de negócio nova na CLI): `workspace select`/`generate` aceitam seleção por ID, nome, índice ou interativamente, sempre com confirmação prévia (pulável via `--yes`). `generate --file <collection.json>` roda a análise/geração a partir de uma Collection exportada localmente, sem `POSTMAN_API_KEY` e sem nenhuma chamada de rede (`GenerateTestsFromDocumentUseCase`, modo `ExecutionMode.OFFLINE`). Atualização remota, execução via Newman, relatórios e snapshots de contrato já existem e são testados na camada de aplicação, mas ainda não têm comando de CLI dedicado — ver limitações.
+- **CLI instalável**: `--help`, `--version`, `config show`, `doctor`, `version`, `workspace list`, `workspace select`, `list`, `generate` e `update`. Todos reutilizam os use cases já existentes (nenhuma regra de negócio nova na CLI): `workspace select`/`generate`/`update` aceitam seleção por ID, nome, índice ou interativamente (lógica compartilhada em `cli/collection_selection.py`), sempre com confirmação prévia (pulável via `--yes`; Ctrl+C/EOF em qualquer prompt cancela de forma limpa, tratamento centralizado em `cli/interactive.py`). `generate --file <collection.json>` roda a análise/geração a partir de uma Collection exportada localmente, sem `POSTMAN_API_KEY` e sem nenhuma chamada de rede (`GenerateTestsFromDocumentUseCase`, modo `ExecutionMode.OFFLINE`). `update` gera os testes novamente a partir do estado *atual* da Collection no Postman e aplica a atualização remota (com preview, backup e confirmação padrão negativa) — reutiliza `GenerateCollectionTestsUseCase` + `UpdateCollectionUseCase` como já existiam, sem depender de artefatos de uma execução anterior do `generate`. Execução via Newman, relatórios e snapshots de contrato já existem e são testados na camada de aplicação, mas ainda não têm comando de CLI dedicado — ver limitações.
 - **Entrada**: `InputResolver` (arquivo/stdin/conteúdo direto) e `JsonDocumentParser`.
 - **Parsers de contrato**: OpenAPI 3.x / Swagger 2.0 (JSON ou YAML, com resolução de `$ref` interno) e Collection Postman (preserva scripts, pastas aninhadas e itens desconhecidos). `PostmanCollectionSerializer` faz o caminho inverso (documento → JSON do Postman), usado na atualização remota e no backup.
 - **Normalização Postman**: `auth`/`body`/`url` convertidos em modelos tipados (`NormalizedAuth`, `NormalizedBody`, `NormalizedUrl`), sem expor segredos.
@@ -27,7 +27,7 @@ Já implementados (com testes automatizados — 689 testes, incluindo uma suíte
 - **Snapshots de contrato** (`ContractSnapshot` + `ContractComparisonEngine`): persistem uma representação puramente estrutural (schema, status codes, content types — nunca valores reais) por Workspace/Collection/método/endpoint, e comparam duas versões de forma determinística (campo adicionado/removido, mudança de tipo/`required`/enum, status code, content type). Atualizar um baseline existente exige `overwrite=True` explícito.
 - **Testes de aceitação ponta a ponta** (`tests/acceptance/`): validam os fluxos completos do SAD compondo os componentes reais acima (sem mocks internos — só um servidor Postman local simulado e um processo Newman simulado), incluindo alternância entre Collections, isolamento de artefatos e confirmação de que a atualização remota simulada nunca atinge uma Collection não selecionada. Matriz requisito×teste e limitações conhecidas do MVP em `tests/acceptance/README.md`.
 
-Principais limitações atuais (detalhadas em `tests/acceptance/README.md`): não há comando de CLI para atualização remota, execução via Newman, relatórios ou snapshots de contrato, todos já implementados e testados na camada de aplicação, mas hoje só acionáveis compondo as classes diretamente em Python; a geração de testes (schema → estratégia → script) só existe para Collections Postman, não para especificações OpenAPI (que param na etapa de análise); `generate --file` cobre só a geração local (`ExecutionMode.OFFLINE`) — não há um caminho equivalente em modo offline para atualização remota/Newman/relatório, que continuam exigindo uma Collection real no Postman; snapshots de contrato ainda não estão conectados a nenhum fluxo de geração/atualização; sem relatório de cobertura de código configurado no projeto.
+Principais limitações atuais (detalhadas em `tests/acceptance/README.md`): não há comando de CLI para execução via Newman, relatórios ou snapshots de contrato, todos já implementados e testados na camada de aplicação, mas hoje só acionáveis compondo as classes diretamente em Python; a geração de testes (schema → estratégia → script) só existe para Collections Postman, não para especificações OpenAPI (que param na etapa de análise); `generate --file` cobre só a geração local (`ExecutionMode.OFFLINE`) — `update` sempre exige uma Collection real no Postman, não há um caminho de atualização offline; snapshots de contrato ainda não estão conectados a nenhum fluxo de geração/atualização; sem relatório de cobertura de código configurado no projeto.
 
 ## Instalação local
 
@@ -92,17 +92,32 @@ api-quality-agent generate --collection-id <id> --yes
 # POSTMAN_API_KEY — útil quando você só tem o arquivo, ou quer gerar os
 # scripts offline para colar manualmente depois
 api-quality-agent generate --file local/collections/minha_collection_exportada.json
+
+# Depois de revisar os arquivos gerados em artifacts/.../scripts/, aplica a
+# atualização na Collection remota do Postman (mesma seleção por ID/nome/
+# índice/interativa de generate)
+api-quality-agent update --collection-id <id>
+api-quality-agent update -n "Fake Store API Collection"
+api-quality-agent update 2
+api-quality-agent update
+api-quality-agent update --collection-id <id> --yes
 ```
 
-Em `workspace select` e `generate`, apenas uma forma de seleção pode ser usada por vez (ID, nome, índice ou `--file`); combiná-las é rejeitado antes de qualquer chamada de rede. Sem `--yes`, todos sempre pedem confirmação antes de persistir a seleção (ou gerar/aplicar os testes); qualquer resposta que não seja um "sim" reconhecido (incluindo Ctrl+C) cancela a operação sem alterar nada. Em `generate`, a seleção de Collection é sempre temporária (nunca sobrescreve a seleção ativa); já `workspace select`, ao ser confirmado, persiste o novo Workspace em `~/.api-quality-agent/selection.json` — e se o Workspace escolhido for diferente do anterior, a Collection ativa é limpa (pertencia ao contexto anterior).
+Em `workspace select`, `generate` e `update`, apenas uma forma de seleção pode ser usada por vez (ID, nome, índice ou, só em `generate`, `--file`); combiná-las é rejeitado antes de qualquer chamada de rede. Sem `--yes`, todos sempre pedem confirmação antes de agir; qualquer resposta que não seja um "sim" reconhecido (incluindo Ctrl+C ou EOF, em qualquer prompt) cancela a operação sem alterar nada, com código de saída 9. Em `generate`/`update`, a seleção de Collection é sempre temporária (nunca sobrescreve a seleção ativa); já `workspace select`, ao ser confirmado, persiste o novo Workspace em `~/.api-quality-agent/selection.json` — e se o Workspace escolhido for diferente do anterior, a Collection ativa é limpa (pertencia ao contexto anterior).
 
 `generate --file` roda só a análise/geração local (sem `update` remoto — não há Collection do Postman pra atualizar); os artefatos são salvos em `artifacts/local/<nome-da-collection>/<execução>/`, junto com os demais. Como o export pode conter tokens/headers salvos nos requests, evite versionar o arquivo — a pasta `local/` já é gitignored e serve bem pra isso.
 
-Os scripts de exemplo antigos em `local/` (ex.: `select_collection_and_generate.py`, com `COLLECTION_ID` editado manualmente no código) não são mais necessários — `api-quality-agent workspace select` + `generate` os substituem.
+**`generate` nunca altera a Collection remota — só `update` faz isso.** O fluxo recomendado é:
+
+1. `api-quality-agent generate -c <collection-id>` — gera os scripts em `artifacts/.../scripts/` para revisão local; nada muda no Postman.
+2. Revise os arquivos `.js` gerados.
+3. `api-quality-agent update -c <collection-id>` — **gera os testes de novo**, a partir do estado *atual* da Collection no Postman (não lê os arquivos gerados no passo 1), mostra um preview (requests analisadas/alteradas/sem alteração, testes gerados, avisos), pede confirmação (padrão **negativo** — Enter vazio cancela, diferente de `generate`/`workspace select`), cria um backup local antes do upload e só então atualiza a Collection remota. Se a Collection tiver mudado entre os passos 1 e 3, o resultado do `update` reflete o estado novo — o preview do passo 1 pode não corresponder mais exatamente ao que será aplicado.
+
+Os scripts de exemplo antigos em `local/` (ex.: `select_collection_and_generate.py`, com `COLLECTION_ID` editado manualmente no código) não são mais necessários — `api-quality-agent workspace select` + `generate` + `update` os substituem.
 
 ### Fluxos ainda sem comando de CLI (disponíveis via Python)
 
-Atualização remota, execução via Newman, relatórios e snapshots de contrato já estão implementados e testados (ver "Estado atual"), mas hoje só são acionáveis compondo as classes diretamente em Python — não há comando de CLI para eles. Exemplo mínimo (selecionar Workspace/Collection e gerar testes — equivalente ao que `workspace select` + `generate` já fazem pela CLI):
+Execução via Newman, relatórios e snapshots de contrato já estão implementados e testados (ver "Estado atual"), mas hoje só são acionáveis compondo as classes diretamente em Python — não há comando de CLI para eles. Exemplo mínimo (selecionar Workspace/Collection e gerar testes — equivalente ao que `workspace select` + `generate` já fazem pela CLI):
 
 ```python
 import os

@@ -3,15 +3,9 @@ import argparse
 from api_quality_agent.cli import bootstrap
 from api_quality_agent.cli.bootstrap import CliContext
 from api_quality_agent.cli.exit_codes import OPERATION_CANCELLED, SUCCESS
+from api_quality_agent.cli.interactive import OperationCancelled, confirm, read_line
 from api_quality_agent.domain.exceptions import AmbiguousResourceError, InputError, ResourceNotFoundError
 from api_quality_agent.domain.models import WorkspaceRef
-
-_CONFIRM_VALUES = frozenset({"", "s", "sim", "y", "yes"})
-_CANCEL_VALUES = frozenset({"n", "nao", "não", "no"})
-
-
-class _OperationCancelled(Exception):
-    pass
 
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -81,14 +75,14 @@ def _handle_select(args: argparse.Namespace) -> int:
 
     try:
         selected = _select_workspace(context, args)
-    except _OperationCancelled:
-        print("Operação cancelada pelo usuário.")
-        return OPERATION_CANCELLED
 
-    print(f"Workspace selecionado: {selected.name}")
-    print(f"Workspace ID: {selected.id}\n")
+        print(f"Workspace selecionado: {selected.name}")
+        print(f"Workspace ID: {selected.id}\n")
 
-    if not args.yes and not _confirm():
+        if not args.yes and not confirm():
+            print("Operação cancelada pelo usuário.")
+            return OPERATION_CANCELLED
+    except OperationCancelled:
         print("Operação cancelada pelo usuário.")
         return OPERATION_CANCELLED
 
@@ -176,7 +170,7 @@ def _select_interactively(context: CliContext) -> WorkspaceRef:
         print(f"    ID: {workspace.id}\n")
 
     while True:
-        raw = _read_line("Selecione um Workspace: ")
+        raw = read_line("Selecione um Workspace: ")
         text = raw.strip()
         if not text:
             print("Entrada inválida. Digite o número correspondente ao Workspace.")
@@ -190,21 +184,3 @@ def _select_interactively(context: CliContext) -> WorkspaceRef:
             print(f"Opção inválida. Escolha um número entre 1 e {len(workspaces)}.")
             continue
         return workspaces[choice - 1]
-
-
-def _confirm() -> bool:
-    raw = _read_line("Deseja continuar? [S/n]: ")
-    answer = raw.strip().lower()
-    if answer in _CANCEL_VALUES:
-        return False
-    if answer in _CONFIRM_VALUES:
-        return True
-    print("Entrada não reconhecida.")
-    return False
-
-
-def _read_line(prompt: str) -> str:
-    try:
-        return input(prompt)
-    except (EOFError, KeyboardInterrupt):
-        raise _OperationCancelled() from None

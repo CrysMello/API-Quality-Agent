@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from api_quality_agent.adapters.config import FileSelectionRepository
-from api_quality_agent.adapters.filesystem import LocalArtifactRepository
+from api_quality_agent.adapters.filesystem import LocalArtifactRepository, LocalBackupRepository
 from api_quality_agent.adapters.postman import PostmanApiClient
 from api_quality_agent.cli import bootstrap
 from api_quality_agent.domain.models import ActiveSelection
@@ -134,6 +134,19 @@ def configure_server(
             body={"collection": collection_a_payload()},
         )
 
+    server.set_route(
+        f"/collections/{COLLECTION_A_ID}",
+        method="PUT",
+        status=200,
+        body={"collection": {"id": COLLECTION_A_ID, "uid": COLLECTION_A_ID}},
+    )
+    server.set_route(
+        f"/collections/{COLLECTION_B_ID}",
+        method="PUT",
+        status=200,
+        body={"collection": {"id": COLLECTION_B_ID, "uid": COLLECTION_B_ID}},
+    )
+
 
 @pytest.fixture
 def cli_env(monkeypatch, tmp_path: Path, postman_test_server):
@@ -149,6 +162,7 @@ def cli_env(monkeypatch, tmp_path: Path, postman_test_server):
 
     selection_path = tmp_path / "selection.json"
     artifacts_path = tmp_path / "artifacts"
+    backups_path = tmp_path / "backups"
 
     monkeypatch.setattr(bootstrap, "PostmanApiClient", _fake_client)
     monkeypatch.setattr(
@@ -156,6 +170,9 @@ def cli_env(monkeypatch, tmp_path: Path, postman_test_server):
     )
     monkeypatch.setattr(
         bootstrap, "LocalArtifactRepository", lambda: LocalArtifactRepository(artifacts_path)
+    )
+    monkeypatch.setattr(
+        bootstrap, "LocalBackupRepository", lambda: LocalBackupRepository(backups_path)
     )
 
     return postman_test_server
