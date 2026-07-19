@@ -39,7 +39,12 @@ _SINGULAR_ASSERTION_TYPES = frozenset(
 
 
 def _is_json_content_type(content_type: str) -> bool:
-    return content_type == "application/json" or content_type.endswith("+json")
+    # Ignora parâmetros do cabeçalho (ex.: "; charset=utf-8"), comuns em APIs
+    # reais — sem isso, "application/json; charset=utf-8" nunca era
+    # reconhecido como JSON e todas as asserções de corpo/schema eram
+    # puladas silenciosamente.
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    return media_type == "application/json" or media_type.endswith("+json")
 
 
 class TestStrategyEngine:

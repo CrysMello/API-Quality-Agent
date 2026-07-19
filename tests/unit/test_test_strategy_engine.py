@@ -122,6 +122,23 @@ def test_schema_assertion_uses_provided_schema():
     assert schema_assertion.origin == "contract"
 
 
+def test_schema_assertion_is_generated_when_content_type_has_charset_parameter():
+    # Regressão: "application/json; charset=utf-8" (comum em APIs reais) não
+    # era reconhecido como JSON, então schema/corpo eram pulados por engano.
+    endpoint = _build_endpoint(
+        response_status_codes=("200",),
+        response_content_types=("application/json; charset=utf-8",),
+    )
+    response_schema = {"type": "object", "properties": {"id": {"type": "integer"}}}
+
+    strategy = TestStrategyEngine().build_strategy(endpoint, response_schema=response_schema)
+
+    assertion_types = {a.assertion_type for a in strategy.assertions}
+    assert AssertionType.VALID_JSON_BODY in assertion_types
+    schema_assertion = _assertion_of_type(strategy, AssertionType.SCHEMA)
+    assert schema_assertion.expected_value == response_schema
+
+
 def test_no_schema_assertion_when_schema_not_provided():
     endpoint = _build_endpoint(
         response_status_codes=("200",), response_content_types=("application/json",)
