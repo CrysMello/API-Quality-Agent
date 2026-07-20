@@ -89,6 +89,7 @@ def test_run_help_exits_zero_and_documents_flags():
     assert result.returncode == 0
     assert "--collection-id" in result.stdout
     assert "--collection-name" in result.stdout
+    assert "--file" in result.stdout
     assert "--newman-executable" in result.stdout
 
 
@@ -159,6 +160,27 @@ def test_run_without_api_key_fails_fast_without_network(no_api_key_env):
 
     assert result.returncode == 2
     assert "POSTMAN_API_KEY" in result.stderr
+
+
+def test_run_from_file_never_requires_api_key_even_on_validation_failure(no_api_key_env, tmp_path):
+    # Prova, num subprocesso real, que `run --file` nem chega a checar
+    # POSTMAN_API_KEY: falha de validação do arquivo (ausente) usa o mesmo
+    # código de erro de entrada de sempre, sem nenhuma menção à API Key.
+    result = _run_cli(
+        "run", "--file", "nao-existe.json", env=no_api_key_env, cwd=str(tmp_path)
+    )
+
+    assert result.returncode == 2
+    assert "POSTMAN_API_KEY" not in result.stderr
+
+
+def test_run_rejects_file_and_collection_id_together_in_a_real_subprocess(no_api_key_env, tmp_path):
+    result = _run_cli(
+        "run", "--file", "collection.json", "--collection-id", "abc",
+        env=no_api_key_env, cwd=str(tmp_path),
+    )
+
+    assert result.returncode == 2
 
 
 def test_generate_from_file_works_in_a_real_subprocess_without_api_key(no_api_key_env, tmp_path):

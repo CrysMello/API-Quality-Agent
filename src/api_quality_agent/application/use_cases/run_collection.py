@@ -17,13 +17,17 @@ from api_quality_agent.ports.outbound.collection_runner import DEFAULT_RUN_TIMEO
 class RunCollectionUseCase:
     def __init__(
         self,
-        get_current_workspace_use_case: GetCurrentWorkspaceUseCase,
-        resolve_collection_use_case: ResolveCollectionUseCase,
-        collection_repository: CollectionRepository,
+        get_current_workspace_use_case: GetCurrentWorkspaceUseCase | None,
+        resolve_collection_use_case: ResolveCollectionUseCase | None,
+        collection_repository: CollectionRepository | None,
         collection_runner: CollectionRunner,
         *,
         collection_serializer: PostmanCollectionSerializer | None = None,
     ) -> None:
+        # Os três primeiros parâmetros só são necessários para o caminho
+        # "Collection selecionada" (Workspace/Postman); execute(local_collection_path=...)
+        # nunca os utiliza, o que permite montar este use case num contexto
+        # puramente local (sem POSTMAN_API_KEY) — ver bootstrap.build_offline_run_context().
         self._get_current_workspace_use_case = get_current_workspace_use_case
         self._resolve_collection_use_case = resolve_collection_use_case
         self._collection_repository = collection_repository
@@ -69,6 +73,17 @@ class RunCollectionUseCase:
         environment_path: str | None,
         timeout_seconds: float,
     ) -> ExecutionResult:
+        if (
+            self._get_current_workspace_use_case is None
+            or self._resolve_collection_use_case is None
+            or self._collection_repository is None
+        ):
+            raise InputError(
+                "Este use case foi montado apenas para execução local "
+                "(local_collection_path); informe local_collection_path ou "
+                "monte-o com as dependências de Workspace/Postman."
+            )
+
         workspace_id = self._get_current_workspace_use_case.execute()
         if not workspace_id:
             raise InputError(

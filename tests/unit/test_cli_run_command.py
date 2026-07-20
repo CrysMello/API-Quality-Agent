@@ -492,3 +492,145 @@ def test_run_write_failure_with_test_failures_still_returns_functional_failure(
 
     assert exit_code == FUNCTIONAL_FAILURE
     assert "não foi possível salvar" in capsys.readouterr().err.lower()
+
+
+# --- run --file (modo offline) ----------------------------------------------------------------
+
+
+def _write_local_collection(path: Path, *, name: str = "Local Collection") -> Path:
+    document = {
+        "info": {
+            "name": name,
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Ping",
+                "id": "req-1",
+                "request": {"method": "GET", "url": "https://api.exemplo.com/ping"},
+                "response": [{"name": "ok", "status": "OK", "code": 200, "header": [], "body": "{}"}],
+            }
+        ],
+    }
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
+def test_run_from_file_succeeds_without_api_key(offline_env, fake_newman_offline, monkeypatch, capsys):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+    collection_path = _write_local_collection(offline_env / "collection.json")
+
+    exit_code = main(["run", "--file", str(collection_path)])
+
+    assert exit_code == SUCCESS
+    out = capsys.readouterr().out
+    assert "Local Collection" in out
+    assert "N/A (execução local)" in out
+    assert "Execution finished successfully." in out
+
+
+def test_run_from_file_with_test_failures_returns_functional_failure(
+    offline_env, fake_newman_offline, monkeypatch
+):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "with_test_failures")
+    collection_path = _write_local_collection(offline_env / "collection.json")
+
+    exit_code = main(["run", "--file", str(collection_path)])
+
+    assert exit_code == FUNCTIONAL_FAILURE
+
+
+def test_run_from_file_with_executable_not_found_returns_integration_failure(offline_env):
+    collection_path = _write_local_collection(offline_env / "collection.json")
+
+    exit_code = main(
+        ["run", "--file", str(collection_path), "--newman-executable", "newman-que-nao-existe"]
+    )
+
+    assert exit_code == INTEGRATION_FAILURE
+
+
+def test_run_from_file_with_missing_collection_reports_invalid_input(offline_env):
+    exit_code = main(["run", "--file", str(offline_env / "nao-existe.json")])
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+
+
+def test_run_from_file_never_requires_postman_api_key(offline_env, fake_newman_offline, monkeypatch):
+    monkeypatch.delenv("POSTMAN_API_KEY", raising=False)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+    collection_path = _write_local_collection(offline_env / "collection.json")
+
+    exit_code = main(["run", "--file", str(collection_path)])
+
+    assert exit_code == SUCCESS
+
+
+def test_run_from_file_persists_result_with_null_workspace_and_collection_id(
+    offline_env, fake_newman_offline, monkeypatch
+):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+    collection_path = _write_local_collection(offline_env / "collection.json", name="PetStore Local")
+
+    exit_code = main(["run", "--file", str(collection_path)])
+
+    assert exit_code == SUCCESS
+    matches = list(offline_env.glob("artifacts/run_*/result.json"))
+    assert len(matches) == 1
+    payload = json.loads(matches[0].read_text(encoding="utf-8"))
+    assert payload["workspace"] == {"id": None, "name": None}
+    assert payload["collection"] == {"id": None, "name": "PetStore Local"}
+
+
+# --- run --file: exclusividade com seleção remota ----------------------------------------------------------------
+
+
+def test_run_rejects_file_and_collection_id_together(offline_env):
+    collection_path = _write_local_collection(offline_env / "collection.json")
+
+    exit_code = main(["run", "--file", str(collection_path), "--collection-id", COLLECTION_A_ID])
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+
+
+def test_run_rejects_file_and_collection_name_together(offline_env):
+    collection_path = _write_local_collection(offline_env / "collection.json")
+
+    exit_code = main(
+        ["run", "--file", str(collection_path), "--collection-name", COLLECTION_A_NAME]
+    )
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+
+
+def test_run_rejects_file_and_index_together(offline_env):
+    collection_path = _write_local_collection(offline_env / "collection.json")
+
+    exit_code = main(["run", "1", "--file", str(collection_path)])
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+
+
+# --- run --file + report: mesmo pipeline funciona pra online e offline ----------------------------------------------------------------
+
+
+def test_report_reads_a_result_produced_by_run_from_file(
+    offline_env, fake_newman_offline, monkeypatch, capsys
+):
+    # report_command.py usa bootstrap.build_report_context() sem override de
+    # caminho (JsonExecutionResultReader() usa "artifacts/" relativo ao CWD)
+    # — muda o diretório de trabalho para o mesmo local onde offline_env já
+    # isolou os artefatos de `run --file`, para os dois lados enxergarem o
+    # mesmo result.json.
+    monkeypatch.chdir(offline_env)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+    collection_path = _write_local_collection(offline_env / "collection.json", name="Offline Run")
+
+    run_exit_code = main(["run", "--file", str(collection_path)])
+    assert run_exit_code == SUCCESS
+
+    report_exit_code = main(["report"])
+
+    assert report_exit_code == SUCCESS
+    out = capsys.readouterr().out
+    assert "Report generated successfully." in out

@@ -20,8 +20,8 @@ class PersistExecutionResultUseCase:
         self,
         result: ExecutionResult,
         *,
-        collection_id: str,
-        collection_name: str,
+        collection_id: str | None,
+        collection_name: str | None,
         started_at: datetime,
         finished_at: datetime,
         workspace_id: str | None = None,
@@ -46,8 +46,8 @@ class PersistExecutionResultUseCase:
 def _serialize(
     result: ExecutionResult,
     *,
-    collection_id: str,
-    collection_name: str,
+    collection_id: str | None,
+    collection_name: str | None,
     started_at: datetime,
     finished_at: datetime,
     workspace_id: str | None,
@@ -55,7 +55,9 @@ def _serialize(
 ) -> dict[str, Any]:
     # Serialização explícita e estruturada: nunca stdout/stderr brutos, nunca
     # a Collection completa — só os campos já expostos pelo domínio, usados
-    # como entrada oficial de `api-quality-agent report`.
+    # como entrada oficial de `api-quality-agent report`. collection_id/
+    # workspace_* ficam None quando a execução veio de um arquivo local
+    # (run --file) — não há Workspace/Collection do Postman envolvidos.
     infrastructure_failure = result.infrastructure_failure
     return {
         "schema_version": EXECUTION_RESULT_SCHEMA_VERSION,

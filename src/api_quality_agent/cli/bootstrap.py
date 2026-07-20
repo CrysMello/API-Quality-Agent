@@ -190,6 +190,42 @@ def build_offline_context(
 
 
 @dataclass
+class OfflineRunCliContext:
+    # Composição paralela a CliContext para `run --file`: nunca requer
+    # POSTMAN_API_KEY nem toca a API do Postman — RunCollectionUseCase é
+    # montado só com as dependências necessárias para
+    # execute(local_collection_path=...) (as de Workspace/Postman ficam None,
+    # nunca usadas nesse caminho). input_resolver/collection_parser servem
+    # só para validar o arquivo e extrair o nome da Collection para exibição
+    # e persistência — a execução em si (Newman) usa o arquivo original.
+    input_resolver: InputResolver
+    collection_parser: PostmanCollectionParser
+    run_use_case: RunCollectionUseCase
+    persist_execution_result_use_case: PersistExecutionResultUseCase
+
+
+def build_offline_run_context(
+    *,
+    collection_runner: CollectionRunner | None = None,
+    newman_executable: str | None = None,
+    execution_result_repository: ExecutionResultRepository | None = None,
+) -> OfflineRunCliContext:
+    return OfflineRunCliContext(
+        input_resolver=InputResolver(),
+        collection_parser=PostmanCollectionParser(),
+        run_use_case=RunCollectionUseCase(
+            None,
+            None,
+            None,
+            collection_runner or NewmanAdapter(newman_executable=_resolve_newman_executable(newman_executable)),
+        ),
+        persist_execution_result_use_case=PersistExecutionResultUseCase(
+            execution_result_repository or JsonExecutionResultRepository()
+        ),
+    )
+
+
+@dataclass
 class ReportCliContext:
     # Composição paralela a CliContext para o comando `report`: nunca requer
     # POSTMAN_API_KEY nem toca a API do Postman — report só lê um result.json

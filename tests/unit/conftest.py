@@ -215,7 +215,22 @@ def offline_env(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
         bootstrap, "LocalArtifactRepository", lambda: LocalArtifactRepository(tmp_path / "artifacts")
     )
+    monkeypatch.setattr(
+        bootstrap,
+        "JsonExecutionResultRepository",
+        lambda: JsonExecutionResultRepository(tmp_path / "artifacts"),
+    )
     return tmp_path
+
+
+@pytest.fixture
+def fake_newman_offline(offline_env, monkeypatch):
+    # Equivalente a fake_newman, mas sem depender de cli_env (que configura
+    # POSTMAN_API_KEY/servidor fake do Postman) — usado por testes de
+    # `run --file`, que nunca deveriam precisar de nada relacionado ao Postman.
+    factory = _RecordingNewmanAdapterFactory()
+    monkeypatch.setattr(bootstrap, "NewmanAdapter", factory)
+    return factory
 
 
 class _RecordingNewmanAdapterFactory:

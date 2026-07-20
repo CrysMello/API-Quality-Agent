@@ -10,7 +10,7 @@ from api_quality_agent.cli.exit_codes import (
     SUCCESS,
 )
 from api_quality_agent.cli.interactive import OperationCancelled
-from api_quality_agent.domain.models import ExecutionResult, InfrastructureFailureType, WorkspaceRef
+from api_quality_agent.domain.models import ExecutionResult, InfrastructureFailureType
 
 _TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
@@ -20,6 +20,17 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "run", help="Executa a Collection selecionada via Newman."
     )
     collection_selection.add_selection_arguments(parser)
+    parser.add_argument(
+        "-f",
+        "--file",
+        dest="file",
+        default=None,
+        metavar="COLLECTION_JSON",
+        help=(
+            "Executa uma Collection exportada localmente (arquivo .json), "
+            "sem conectar à API do Postman."
+        ),
+    )
     parser.add_argument(
         "--newman-executable",
         dest="newman_executable",
@@ -34,7 +45,10 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
 
 
 def _handle_run(args: argparse.Namespace) -> int:
-    collection_selection.validate_selection_arguments(args)
+    collection_selection.validate_selection_arguments(args, extra_fields=("file",))
+
+    if args.file is not None:
+        return _handle_run_from_file(args)
 
     context = bootstrap.build_context(newman_executable=args.newman_executable)
     workspace_ref = bootstrap.resolve_active_workspace(context)
@@ -58,9 +72,9 @@ def _handle_run(args: argparse.Namespace) -> int:
         _print_infrastructure_failure(result)
         return INTEGRATION_FAILURE
 
-    _print_summary(workspace_ref, selected.name, result, started_at, finished_at)
+    _print_summary(workspace_ref.name, selected.name, result, started_at, finished_at)
     _persist_result(
-        context,
+        context.persist_execution_result_use_case,
         result,
         collection_id=selected.id,
         collection_name=selected.name,
@@ -70,6 +84,45 @@ def _handle_run(args: argparse.Namespace) -> int:
         finished_at=finished_at,
     )
 
+    return _final_exit_code(result)
+
+
+def _handle_run_from_file(args: argparse.Namespace) -> int:
+    context = bootstrap.build_offline_run_context(newman_executable=args.newman_executable)
+
+    resolved_input = context.input_resolver.resolve_from_file(args.file)
+    document = context.collection_parser.parse(resolved_input)
+
+    print(f"Executando '{document.name}' via Newman (arquivo local)...")
+
+    started_at = datetime.now()
+    try:
+        result = context.run_use_case.execute(local_collection_path=args.file, environment_path=None)
+    except KeyboardInterrupt:
+        print("Operação cancelada pelo usuário.")
+        return OPERATION_CANCELLED
+    finished_at = datetime.now()
+
+    if result.infrastructure_failure is not None:
+        _print_infrastructure_failure(result)
+        return INTEGRATION_FAILURE
+
+    _print_summary(None, document.name, result, started_at, finished_at)
+    _persist_result(
+        context.persist_execution_result_use_case,
+        result,
+        collection_id=None,
+        collection_name=document.name,
+        workspace_id=None,
+        workspace_name=None,
+        started_at=started_at,
+        finished_at=finished_at,
+    )
+
+    return _final_exit_code(result)
+
+
+def _final_exit_code(result: ExecutionResult) -> int:
     if result.success:
         print("\nExecution finished successfully.")
         return SUCCESS
@@ -79,13 +132,13 @@ def _handle_run(args: argparse.Namespace) -> int:
 
 
 def _persist_result(
-    context: bootstrap.CliContext,
+    persist_execution_result_use_case: bootstrap.PersistExecutionResultUseCase,
     result: ExecutionResult,
     *,
-    collection_id: str,
-    collection_name: str,
-    workspace_id: str,
-    workspace_name: str,
+    collection_id: str | None,
+    collection_name: str | None,
+    workspace_id: str | None,
+    workspace_name: str | None,
     started_at: datetime,
     finished_at: datetime,
 ) -> None:
@@ -94,7 +147,7 @@ def _persist_result(
     # transforma uma execução bem-sucedida (ou com falhas de teste) em erro
     # de infraestrutura — só é comunicada como um aviso à parte.
     try:
-        location = context.persist_execution_result_use_case.execute(
+        location = persist_execution_result_use_case.execute(
             result,
             collection_id=collection_id,
             collection_name=collection_name,
@@ -111,7 +164,7 @@ def _persist_result(
 
 
 def _print_summary(
-    workspace_ref: WorkspaceRef,
+    workspace_name: str | None,
     collection_name: str,
     result: ExecutionResult,
     started_at: datetime,
@@ -120,7 +173,7 @@ def _print_summary(
     passed = result.total_assertions - result.failed_assertions
     print("\nExecution Summary")
     print("-" * 40)
-    print(f"Workspace: {workspace_ref.name}")
+    print(f"Workspace: {workspace_name or 'N/A (execução local)'}")
     print(f"Collection: {collection_name}")
     print(f"Started: {started_at.strftime(_TIMESTAMP_FORMAT)}")
     print(f"Finished: {finished_at.strftime(_TIMESTAMP_FORMAT)}")
