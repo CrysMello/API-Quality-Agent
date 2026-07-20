@@ -262,6 +262,12 @@ pytest
 mypy src
 ```
 
+## Licença
+
+Este projeto é distribuído sob os termos da licença MIT.
+
+Consulte o arquivo [LICENSE](LICENSE) para mais informações.
+
 ## Author
 
 Projeto idealizado, arquitetado e mantido por Crystiane Mello.
