@@ -23,6 +23,16 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         ),
     )
     parser.add_argument(
+        "--openapi-file",
+        dest="openapi_file",
+        default=None,
+        metavar="OPENAPI_JSON",
+        help=(
+            "Gera uma Collection completa (com testes já embutidos) a partir de "
+            "uma especificação OpenAPI/Swagger local, sem conectar à API do Postman."
+        ),
+    )
+    parser.add_argument(
         "-y",
         "--yes",
         dest="yes",
@@ -33,10 +43,13 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
 
 
 def _handle_generate(args: argparse.Namespace) -> int:
-    collection_selection.validate_selection_arguments(args, extra_fields=("file",))
+    collection_selection.validate_selection_arguments(args, extra_fields=("file", "openapi_file"))
 
     if args.file is not None:
         return _handle_generate_from_file(args)
+
+    if args.openapi_file is not None:
+        return _handle_generate_from_openapi_file(args)
 
     context = bootstrap.build_context()
     workspace_ref = bootstrap.resolve_active_workspace(context)
@@ -87,6 +100,30 @@ def _handle_generate_from_file(args: argparse.Namespace) -> int:
 
     print("Gerando testes (modo local, sem conexão com a API do Postman)...")
     result = context.generate_from_file_use_case.execute(document=document)
+
+    _print_generation_summary(result)
+    return SUCCESS
+
+
+def _handle_generate_from_openapi_file(args: argparse.Namespace) -> int:
+    context = bootstrap.build_offline_context()
+
+    resolved_input = context.input_resolver.resolve_from_file(args.openapi_file)
+    specification = context.openapi_parser.parse(resolved_input)
+
+    print(f"Arquivo: {args.openapi_file}")
+    print(f"Especificação: {specification.title or specification.spec_type.value}\n")
+
+    try:
+        if not args.yes and not confirm():
+            print("Operação cancelada pelo usuário.")
+            return OPERATION_CANCELLED
+    except OperationCancelled:
+        print("Operação cancelada pelo usuário.")
+        return OPERATION_CANCELLED
+
+    print("Gerando Collection e testes a partir da especificação OpenAPI (modo local)...")
+    result = context.generate_from_openapi_use_case.execute(specification=specification)
 
     _print_generation_summary(result)
     return SUCCESS

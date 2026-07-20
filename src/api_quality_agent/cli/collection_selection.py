@@ -33,13 +33,22 @@ def add_selection_arguments(parser: argparse.ArgumentParser) -> None:
     )
 
 
+_EXTRA_FIELD_LABELS = {
+    "file": "--file",
+    "openapi_file": "--openapi-file",
+}
+
+
 def validate_selection_arguments(
     args: argparse.Namespace, *, extra_fields: tuple[str, ...] = ()
 ) -> None:
     fields = ("index", "collection_id", "collection_name", *extra_fields)
     provided = [getattr(args, field) is not None for field in fields]
     if sum(provided) > 1:
-        options = "ID, nome ou índice" if not extra_fields else "ID, nome, índice ou --file"
+        options = "ID, nome ou índice"
+        if extra_fields:
+            extra_labels = ", ".join(_EXTRA_FIELD_LABELS.get(field, field) for field in extra_fields)
+            options = f"ID, nome, índice ou {extra_labels}"
         raise InputError(
             f"informe somente uma forma de seleção da Collection. Use {options} "
             "(não podem ser combinados)."

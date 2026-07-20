@@ -18,6 +18,7 @@ from api_quality_agent.adapters.postman import (
 )
 from api_quality_agent.application.orchestration import AgentOrchestrator
 from api_quality_agent.application.use_cases import (
+    GenerateCollectionFromOpenApiUseCase,
     GenerateCollectionTestsUseCase,
     GenerateTestsFromDocumentUseCase,
     GetCurrentWorkspaceUseCase,
@@ -42,7 +43,12 @@ from api_quality_agent.domain.services import (
     TestStrategyEngine,
 )
 from api_quality_agent.generators import PostmanTestGenerator
-from api_quality_agent.parsers import PostmanCollectionParser
+from api_quality_agent.parsers import (
+    OpenApiCollectionConverter,
+    OpenApiParser,
+    PostmanCollectionParser,
+    PostmanCollectionSerializer,
+)
 from api_quality_agent.ports.outbound import (
     ArtifactRepository,
     BackupRepository,
@@ -171,20 +177,34 @@ class OfflineCliContext:
     # Composição paralela a CliContext para o modo "arquivo local": nunca
     # requer POSTMAN_API_KEY nem toca a API do Postman — só parsing local e
     # a mesma pipeline de geração (orquestrador) usada no modo online.
+    # openapi_* são usados só pelo caminho `generate --openapi-file`: convertem
+    # a especificação numa Collection sintética e reaproveitam a mesma
+    # pipeline (generate_from_file_use_case) sem alterá-la.
     input_resolver: InputResolver
     collection_parser: PostmanCollectionParser
     generate_from_file_use_case: GenerateTestsFromDocumentUseCase
+    openapi_parser: OpenApiParser
+    generate_from_openapi_use_case: GenerateCollectionFromOpenApiUseCase
 
 
 def build_offline_context(
     *,
     artifact_repository: ArtifactRepository | None = None,
 ) -> OfflineCliContext:
+    effective_artifact_repository = artifact_repository or LocalArtifactRepository()
+    generate_from_file_use_case = GenerateTestsFromDocumentUseCase(
+        _build_orchestrator(), effective_artifact_repository
+    )
     return OfflineCliContext(
         input_resolver=InputResolver(),
         collection_parser=PostmanCollectionParser(),
-        generate_from_file_use_case=GenerateTestsFromDocumentUseCase(
-            _build_orchestrator(), artifact_repository or LocalArtifactRepository()
+        generate_from_file_use_case=generate_from_file_use_case,
+        openapi_parser=OpenApiParser(),
+        generate_from_openapi_use_case=GenerateCollectionFromOpenApiUseCase(
+            OpenApiCollectionConverter(),
+            generate_from_file_use_case,
+            PostmanCollectionSerializer(),
+            effective_artifact_repository,
         ),
     )
 
