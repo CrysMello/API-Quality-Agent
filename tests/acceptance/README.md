@@ -74,30 +74,22 @@ este relatório.
 
 ## Limitações restantes do MVP
 
-Identificadas ao validar os fluxos ponta a ponta (nenhuma foi corrigida,
-pois não são defeitos — são escopo ainda não implementado em prompts
-anteriores):
+Identificadas ao validar os fluxos ponta a ponta. Lista revisada — os itens
+originais "geração de testes só existe para Collections Postman", "nenhum
+comando de CLI existe" e "`ExecutionMode.OFFLINE` não é usado em produção"
+foram resolvidos em etapas posteriores (`generate`/`update`/`run`/`report`/
+`workspace` na CLI; `generate --file`/`generate --openapi-file`/`run --file`
+usando `ExecutionMode.OFFLINE` de verdade) e foram removidos daqui.
 
-1. **Geração de testes só existe para Collections Postman.** Para OpenAPI, o
-   pipeline vai até `ApiAnalysisEngine.analyze_specification()` (endpoints,
-   dependências, avisos). `SchemaInferenceEngine`, `TestStrategyEngine` e
-   `PostmanTestGenerator` nunca são exercitados a partir de uma especificação
-   OpenAPI — só a partir de uma Collection Postman.
-2. **Nenhum comando de CLI existe ainda** para seleção de Workspace/Collection,
-   geração, atualização remota, execução via Newman, relatório ou snapshots
-   de contrato — só `config` e `doctor` (`cli/commands/`). Os cenários deste
-   MVP foram validados na camada de aplicação (use cases reais), não via
-   `subprocess`/linha de comando.
-3. **`ExecutionMode.OFFLINE` não é usado por nenhum caminho de produção.**
-   `GenerateCollectionTestsUseCase` sempre cria o `ExecutionContext` com
-   `ExecutionMode.ONLINE`. O cenário 1 monta o `ExecutionContext` offline
-   diretamente no teste, compondo `AgentOrchestrator` sem passar pelo use
-   case (que é Postman-only).
-4. **`ContractSnapshot`/`ContractComparisonEngine`** (implementados na etapa
-   anterior) ainda não estão conectados a nenhum fluxo de geração ou
-   atualização — permanecem como componentes isolados, sem uso automático.
-5. **Sem relatório de cobertura de código configurado** no projeto (ver seção
+1. **`ContractSnapshot`/`ContractComparisonEngine`** ainda não estão
+   conectados a nenhum fluxo de geração ou atualização — permanecem como
+   componentes isolados, sem uso automático. Além do comando de CLI, falta
+   também a peça intermediária: não existe hoje nenhum código (produção ou
+   teste) que construa um `ContractSnapshot` a partir de dados reais de
+   análise (`EndpointAnalysis`/`SchemaInferenceResult`) — os testes existentes
+   constroem o snapshot manualmente, com schema fictício.
+2. **Sem relatório de cobertura de código configurado** no projeto (ver seção
    acima).
-6. **Política de aprovação, timeout do Newman e política de backup/retenção**
+3. **Política de aprovação, timeout do Newman e política de backup/retenção**
    são hoje parâmetros programáticos dos use cases, sem exposição via
    flags de CLI.
