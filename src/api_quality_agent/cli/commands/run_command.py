@@ -41,6 +41,14 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
             "variável de ambiente NEWMAN_EXECUTABLE > \"newman\"."
         ),
     )
+    parser.add_argument(
+        "-e",
+        "--environment",
+        dest="environment",
+        default=None,
+        metavar="ENVIRONMENT_JSON",
+        help="Arquivo de Environment do Postman a usar na execução.",
+    )
     parser.set_defaults(handler=_handle_run)
 
 
@@ -60,7 +68,9 @@ def _handle_run(args: argparse.Namespace) -> int:
 
         started_at = datetime.now()
         try:
-            result = context.run_use_case.execute(collection_id=selected.id, environment_path=None)
+            result = context.run_use_case.execute(
+                collection_id=selected.id, environment_path=args.environment
+            )
         except KeyboardInterrupt:
             raise OperationCancelled() from None
         finished_at = datetime.now()
@@ -97,7 +107,9 @@ def _handle_run_from_file(args: argparse.Namespace) -> int:
 
     started_at = datetime.now()
     try:
-        result = context.run_use_case.execute(local_collection_path=args.file, environment_path=None)
+        result = context.run_use_case.execute(
+            local_collection_path=args.file, environment_path=args.environment
+        )
     except KeyboardInterrupt:
         print("Operação cancelada pelo usuário.")
         return OPERATION_CANCELLED

@@ -634,3 +634,69 @@ def test_report_reads_a_result_produced_by_run_from_file(
     assert report_exit_code == SUCCESS
     out = capsys.readouterr().out
     assert "Report generated successfully." in out
+
+
+# --- --environment ----------------------------------------------------------------
+
+
+def _write_environment_file(path: Path) -> Path:
+    payload = {
+        "values": [
+            {"key": "base_url", "value": "https://api.exemplo.com", "type": "default"},
+            {"key": "token", "value": "segredo-de-environment", "type": "secret"},
+        ]
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_run_environment_flag_is_forwarded_without_breaking_execution(
+    cli_env, selected_workspace, fake_newman, monkeypatch, tmp_path
+):
+    configure_server(cli_env)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+    environment_path = _write_environment_file(tmp_path / "environment_smoke.json")
+
+    exit_code = main(
+        ["run", "--collection-id", COLLECTION_A_ID, "--environment", str(environment_path)]
+    )
+
+    assert exit_code == SUCCESS
+
+
+def test_run_from_file_environment_flag_is_forwarded_without_breaking_execution(
+    offline_env, fake_newman_offline, monkeypatch
+):
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+    collection_path = _write_local_collection(offline_env / "collection.json")
+    environment_path = _write_environment_file(offline_env / "environment.json")
+
+    exit_code = main(
+        ["run", "--file", str(collection_path), "--environment", str(environment_path)]
+    )
+
+    assert exit_code == SUCCESS
+
+
+def test_run_environment_empty_value_reports_invalid_input(
+    cli_env, selected_workspace, fake_newman, monkeypatch
+):
+    configure_server(cli_env)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+
+    exit_code = main(["run", "--collection-id", COLLECTION_A_ID, "--environment", ""])
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+
+
+def test_run_without_environment_flag_still_defaults_to_none(
+    cli_env, selected_workspace, fake_newman, monkeypatch
+):
+    # Regressão: sem --environment, o comportamento continua exatamente
+    # como antes (environment_path=None).
+    configure_server(cli_env)
+    monkeypatch.setenv("FAKE_NEWMAN_MODE", "success")
+
+    exit_code = main(["run", "--collection-id", COLLECTION_A_ID])
+
+    assert exit_code == SUCCESS
