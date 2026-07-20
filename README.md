@@ -206,6 +206,14 @@ api-quality-agent report                                  # gera o relatório (j
 
 **`update` não tem — e não terá — um modo offline.** "Atualizar" significa aplicar as mudanças via PUT numa Collection real do Postman; o retorno inclui um recibo de confirmação (`status_code`, `request_id`) que só existe numa chamada HTTP de verdade. Sem um destino remoto, não há o que "atualizar" — inventar esses campos pra uma operação puramente local violaria a mesma regra que o projeto segue desde o início (nunca inventar dado que não existe). Se um dia fizer sentido "aplicar os testes de volta no arquivo local", isso seria uma funcionalidade nova e diferente, não uma variação do `update` atual.
 
+### Gestão de artefatos
+
+Cada execução de `generate` (ou `run`) cria uma pasta própria, identificada por um `execution_id` único, sem sobrescrever execuções anteriores — isso é proposital, pra permitir comparar resultados antigos com novos.
+
+**Atenção**: isso significa que `artifacts/` cresce a cada execução e **não há limpeza automática**. Em uso frequente (ex.: rodando `generate` em CI ou a cada iteração local), o diretório pode acumular bastante conteúdo ao longo do tempo e ocupar espaço em disco sem aviso.
+
+A limpeza é responsabilidade do usuário — apague manualmente as pastas de execuções que não precisa mais manter. Não existe (ainda) um comando de retenção/limpeza automática.
+
 ### Fluxos ainda sem comando de CLI (disponíveis via Python)
 
 O relatório completo do pipeline de geração (`ReportEngine.generate()`, com endpoints/diff/atualização/execução do Newman — diferente do relatório de execução isolado que `report` já expõe) e snapshots de contrato já estão implementados e testados (ver "Estado atual"), mas hoje só são acionáveis compondo as classes diretamente em Python — não há comando de CLI para eles. Exemplo mínimo (selecionar Workspace/Collection e gerar testes — equivalente ao que `workspace select` + `generate` já fazem pela CLI):
