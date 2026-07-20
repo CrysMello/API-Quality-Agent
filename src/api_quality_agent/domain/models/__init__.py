@@ -22,6 +22,12 @@ from api_quality_agent.domain.models.collection_update_receipt import Collection
 from api_quality_agent.domain.models.contract_change import ContractChange
 from api_quality_agent.domain.models.contract_change_type import ContractChangeType
 from api_quality_agent.domain.models.contract_snapshot import ContractSnapshot
+from api_quality_agent.domain.models.declared_contract_catalog import DeclaredContractCatalog
+from api_quality_agent.domain.models.declared_endpoint_contract import DeclaredEndpointContract
+from api_quality_agent.domain.models.declared_parameter import DeclaredParameter
+from api_quality_agent.domain.models.declared_request_contract import DeclaredRequestContract
+from api_quality_agent.domain.models.declared_response_contract import DeclaredResponseContract
+from api_quality_agent.domain.models.declared_schema import DeclaredSchema
 from api_quality_agent.domain.models.dependency_candidate import DependencyCandidate
 from api_quality_agent.domain.models.dependency_confidence import DependencyConfidence
 from api_quality_agent.domain.models.dependency_evidence_type import DependencyEvidenceType
@@ -115,6 +121,12 @@ __all__ = [
     "ContractChange",
     "ContractChangeType",
     "ContractSnapshot",
+    "DeclaredContractCatalog",
+    "DeclaredEndpointContract",
+    "DeclaredParameter",
+    "DeclaredRequestContract",
+    "DeclaredResponseContract",
+    "DeclaredSchema",
     "DependencyCandidate",
     "DependencyConfidence",
     "DependencyEvidenceType",
