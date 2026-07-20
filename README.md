@@ -270,6 +270,22 @@ print(f"{len(result.endpoint_outcomes)} endpoints processados; diff com mudança
 
 A mesma composição, estendida com atualização remota (`UpdateCollectionUseCase`), execução via Newman (`RunCollectionUseCase` + `NewmanAdapter`) e relatório (`ReportEngine`), está em `tests/acceptance/conftest.py::build_app` — é a montagem de referência, validada pela suíte de aceitação. `tests/acceptance/README.md` documenta a jornada completa (seleção → geração → atualização → execução → relatório) passo a passo.
 
+## Limitações conhecidas
+
+- **Sem cobertura de casos de erro** (só happy path) — testes negativos
+  ainda não são gerados automaticamente.
+- **Limpeza de artefatos é manual** — cada execução cria uma pasta nova em
+  `artifacts\`, sem retenção automática.
+- **Schema inferido a partir de exemplo(s), não de contrato formal** — os
+  testes de tipo/schema são deduzidos a partir do(s) "Example Response"
+  salvo(s) (Postman) ou `example`/`examples` documentado(s) (OpenAPI), nunca
+  inventados sem evidência. Isso significa que variações legítimas da API
+  não representadas nos exemplos disponíveis (campo opcional ausente,
+  `null`, tipos mistos em array) podem gerar um teste que falha numa
+  resposta correta. Não é um bug a ser corrigido, mas um trade-off inerente
+  a qualquer geração baseada em exemplo — usar mais exemplos reduz o risco,
+  mas não o elimina.
+
 ## Comandos de qualidade
 
 ```bash
