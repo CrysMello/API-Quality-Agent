@@ -4,6 +4,7 @@ from api_quality_agent.application.orchestration import CollectionGenerationResu
 from api_quality_agent.cli import bootstrap, collection_selection
 from api_quality_agent.cli.exit_codes import OPERATION_CANCELLED, SUCCESS
 from api_quality_agent.cli.interactive import OperationCancelled, confirm
+from api_quality_agent.domain.exceptions import InputError
 
 
 def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -33,6 +34,19 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         ),
     )
     parser.add_argument(
+        "--contract-file",
+        dest="contract_file",
+        default=None,
+        metavar="CONTRATO_XLSX",
+        help=(
+            "Usa um contrato de API declarado numa planilha Excel (.xlsx) como "
+            "fonte de schema para as requests pareadas, em vez de inferir só "
+            "de Examples salvos. Combinável com a seleção normal da Collection "
+            "ou com --file; endpoints sem contrato declarado continuam usando "
+            "a inferência de sempre."
+        ),
+    )
+    parser.add_argument(
         "-y",
         "--yes",
         dest="yes",
@@ -44,6 +58,8 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
 
 def _handle_generate(args: argparse.Namespace) -> int:
     collection_selection.validate_selection_arguments(args, extra_fields=("file", "openapi_file"))
+    if args.contract_file is not None and args.openapi_file is not None:
+        raise InputError("--contract-file não pode ser combinado com --openapi-file.")
 
     if args.file is not None:
         return _handle_generate_from_file(args)
@@ -75,7 +91,12 @@ def _handle_generate(args: argparse.Namespace) -> int:
     # resolvida acima (por ID, nome, índice ou interativamente) — isso é
     # sempre uma seleção temporária (ResolveCollectionUseCase nunca
     # persiste), nunca altera a seleção ativa salva em disco.
-    result = context.generate_use_case.execute(collection_id=selected.id)
+    if args.contract_file is not None:
+        result = context.generate_with_contract_use_case.execute_online(
+            contract_file=args.contract_file, collection_id=selected.id
+        )
+    else:
+        result = context.generate_use_case.execute(collection_id=selected.id)
 
     _print_generation_summary(result)
     return SUCCESS
@@ -99,7 +120,12 @@ def _handle_generate_from_file(args: argparse.Namespace) -> int:
         return OPERATION_CANCELLED
 
     print("Gerando testes (modo local, sem conexão com a API do Postman)...")
-    result = context.generate_from_file_use_case.execute(document=document)
+    if args.contract_file is not None:
+        result = context.generate_with_contract_use_case.execute_offline(
+            contract_file=args.contract_file, document=document
+        )
+    else:
+        result = context.generate_from_file_use_case.execute(document=document)
 
     _print_generation_summary(result)
     return SUCCESS

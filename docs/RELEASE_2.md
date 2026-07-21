@@ -176,6 +176,78 @@ dependência de desenvolvimento (stubs pro `mypy`).
     já documentado como limitação conhecida no README, tratamento fica pra
     tarefa independente futura). `mypy` e `pytest` executados com sucesso;
     nenhuma dependência ou configuração de ferramental foi alterada.
+- [x] **Fase 4 (conclusão) — `AgentOrchestrator` passa a consumir `SchemaProvider`**
+      (R2-06, concluída; **único arquivo de produção alterado**)
+  - Constructor: `schema_inference_engine: SchemaInferenceEngine` virou
+    `schema_provider: SchemaProvider | SchemaInferenceEngine`.
+    **Retrocompatibilidade real, não só nominal**: se um `SchemaInferenceEngine`
+    "cru" for passado (todo callsite hoje faz isso — grep confirmou 9
+    arquivos, incluindo `bootstrap.py`, `tests/acceptance/conftest.py` e 6
+    arquivos de teste unitário — todos posicionais, nenhum por keyword), o
+    `AgentOrchestrator` o empacota automaticamente num `InferenceSchemaProvider`
+    internamente. **Nenhum desses 9 arquivos precisou ser alterado.**
+  - `_process_endpoint` passa a chamar `self._schema_provider.resolve(raw_request)`
+    em vez de `self._infer_response_schema(raw_request)`; o método privado
+    `_infer_response_schema` foi removido (lógica agora só existe, uma vez,
+    dentro de `InferenceSchemaProvider`).
+  - Testes novos (`tests/unit/test_agent_orchestrator_schema_provider.py`,
+    4): confirmam que (1) passar um `SchemaInferenceEngine` cru continua
+    funcionando; (2) passar `SchemaInferenceEngine()` cru e
+    `InferenceSchemaProvider(SchemaInferenceEngine())` explícito produzem
+    **o script idêntico**, byte a byte; (3) `ExcelSchemaProvider` de fato
+    dirige a geração a partir do schema declarado, mesmo sem Example salvo
+    com aquele corpo; (4) sem match no catálogo, gera sem erro (nunca
+    quebra).
+  - Todos os 4 testes de `test_agent_orchestrator.py` (já existentes,
+    caracterizando o comportamento atual) continuam passando **sem
+    nenhuma alteração** — são a prova de regressão zero.
+  - `mypy src`: limpo (213 arquivos). `pytest`: 964 passed, 1 skipped.
+  - Ruff: mesma situação registrada nas etapas anteriores (não
+    instalado/configurado); só `mypy`/`pytest` executados; nenhuma
+    dependência/configuração de ferramental alterada.
+- [x] **Fase 6 — CLI `generate --contract-file`** (R2-07, concluída; só a
+      camada de CLI/composição, nenhum domain service/porta novo)
+  - Flag `--contract-file` em `generate`, combinável com a seleção normal
+    (online) ou com `--file` (offline); rejeita combinação com
+    `--openapi-file`. Sem `--contract-file`, comportamento idêntico ao de
+    antes (nenhum teste existente precisou mudar).
+  - `GenerateTestsWithContractUseCase` (`application/use_cases/`) — única
+    peça de composição nova, necessária porque `AgentOrchestrator` só pode
+    ser construído com `PostmanTestGenerator` (import proibido em arquivos
+    de comando pela regra de arquitetura já existente) — então essa
+    montagem precisa acontecer fora do arquivo de comando. Constrói um
+    `AgentOrchestrator` "ciente de contrato" (schema declarado com fallback
+    pra inferência, via `FallbackSchemaProvider` novo) e delega pra
+    `GenerateCollectionTestsUseCase`/`GenerateTestsFromDocumentUseCase`
+    já existentes, sem duplicar a lógica de geração/artefatos.
+    `get_current_workspace_use_case`/`resolve_collection_use_case`/
+    `collection_repository` são `| None` (só usados por `execute_online`),
+    mesmo padrão já usado em `RunCollectionUseCase`.
+  - `FallbackSchemaProvider` (`domain/services/`): tenta o schema declarado
+    primeiro; sem match/sem schema, cai pra inferência — implementa a
+    política padrão descrita no SAD sem lógica nova além de delegação.
+  - `bootstrap.py`: `CliContext`/`OfflineCliContext` ganham
+    `excel_contract_parser`/`generate_with_contract_use_case`.
+  - Testes: `tests/unit/test_cli_generate_contract_file.py` (6 — geração
+    com contrato sem API Key, sem chamada de rede, sem vazar API Key,
+    rejeição de `--contract-file`+`--openapi-file`, comportamento inalterado
+    sem a flag).
+  - Testado manualmente ponta a ponta: `collection.json` real +
+    `contrato.xlsx` real → script gerado a partir do schema declarado.
+    Confirmei que a asserção gerada (só status code, sem os campos
+    aninhados do schema) tem paridade exata com o que a inferência já
+    produzia hoje pra um exemplo real com a mesma forma aninhada — não é
+    regressão nem bug novo, é característica pré-existente do
+    `TestStrategyEngine`.
+  - `mypy src`: limpo (215 arquivos). `pytest`: 970 passed, 1 skipped.
+  - Ruff: mesma situação já registrada (não instalado/configurado; nada de
+    ferramental alterado).
+  - **Limitação conhecida, não resolvida nesta etapa**: arquivo de contrato
+    ausente/corrompido mapeia hoje pro código de saída 8 (erro inesperado),
+    não 2 (entrada inválida) — `ExcelContractParser`/`openpyxl` não têm
+    tratamento de exceção específico pra isso ainda. Não é uma quebra (a
+    CLI já captura genericamente e nunca deixa vazar um traceback cru), só
+    uma classificação de código de saída menos precisa do que o ideal.
 - [ ] **Fase 4** — characterization tests do `AgentOrchestrator` atual,
       depois `SchemaProvider` (porta) + `InferenceSchemaProvider`/
       `DeclaredSchemaProvider` + mudança aditiva no `AgentOrchestrator`.

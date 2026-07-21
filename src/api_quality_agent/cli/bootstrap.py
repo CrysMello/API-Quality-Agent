@@ -21,6 +21,7 @@ from api_quality_agent.application.use_cases import (
     GenerateCollectionFromOpenApiUseCase,
     GenerateCollectionTestsUseCase,
     GenerateTestsFromDocumentUseCase,
+    GenerateTestsWithContractUseCase,
     GetCurrentWorkspaceUseCase,
     ListCollectionsUseCase,
     ListWorkspacesUseCase,
@@ -44,6 +45,7 @@ from api_quality_agent.domain.services import (
 )
 from api_quality_agent.generators import PostmanTestGenerator
 from api_quality_agent.parsers import (
+    ExcelContractParser,
     OpenApiCollectionConverter,
     OpenApiParser,
     PostmanCollectionParser,
@@ -84,6 +86,8 @@ class CliContext:
     update_use_case: UpdateCollectionUseCase
     run_use_case: RunCollectionUseCase
     persist_execution_result_use_case: PersistExecutionResultUseCase
+    excel_contract_parser: ExcelContractParser
+    generate_with_contract_use_case: GenerateTestsWithContractUseCase
 
 
 def _build_orchestrator() -> AgentOrchestrator:
@@ -126,12 +130,26 @@ def build_context(
     get_current_workspace_use_case = GetCurrentWorkspaceUseCase(effective_selection_repository)
 
     orchestrator = _build_orchestrator()
+    effective_artifact_repository = artifact_repository or LocalArtifactRepository()
     generate_use_case = GenerateCollectionTestsUseCase(
         get_current_workspace_use_case,
         resolve_collection_use_case,
         collection_repository,
         orchestrator,
-        artifact_repository or LocalArtifactRepository(),
+        effective_artifact_repository,
+    )
+    generate_with_contract_use_case = GenerateTestsWithContractUseCase(
+        ExcelContractParser(),
+        ApiAnalysisEngine(),
+        SchemaInferenceEngine(),
+        TestStrategyEngine(),
+        PostmanTestGenerator(),
+        ManagedBlockMerger(),
+        DiffEngine(),
+        effective_artifact_repository,
+        get_current_workspace_use_case=get_current_workspace_use_case,
+        resolve_collection_use_case=resolve_collection_use_case,
+        collection_repository=collection_repository,
     )
 
     return CliContext(
@@ -161,6 +179,8 @@ def build_context(
         persist_execution_result_use_case=PersistExecutionResultUseCase(
             execution_result_repository or JsonExecutionResultRepository()
         ),
+        excel_contract_parser=ExcelContractParser(),
+        generate_with_contract_use_case=generate_with_contract_use_case,
     )
 
 
@@ -185,6 +205,8 @@ class OfflineCliContext:
     generate_from_file_use_case: GenerateTestsFromDocumentUseCase
     openapi_parser: OpenApiParser
     generate_from_openapi_use_case: GenerateCollectionFromOpenApiUseCase
+    excel_contract_parser: ExcelContractParser
+    generate_with_contract_use_case: GenerateTestsWithContractUseCase
 
 
 def build_offline_context(
@@ -204,6 +226,17 @@ def build_offline_context(
             OpenApiCollectionConverter(),
             generate_from_file_use_case,
             PostmanCollectionSerializer(),
+            effective_artifact_repository,
+        ),
+        excel_contract_parser=ExcelContractParser(),
+        generate_with_contract_use_case=GenerateTestsWithContractUseCase(
+            ExcelContractParser(),
+            ApiAnalysisEngine(),
+            SchemaInferenceEngine(),
+            TestStrategyEngine(),
+            PostmanTestGenerator(),
+            ManagedBlockMerger(),
+            DiffEngine(),
             effective_artifact_repository,
         ),
     )
