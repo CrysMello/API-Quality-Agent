@@ -125,6 +125,29 @@ def test_generate_from_file_with_contract_file_makes_no_network_calls(
     assert postman_test_server.received_paths == []
 
 
+def test_generate_from_file_with_contract_file_saves_a_match_report(offline_env, capsys):
+    collection_path = _write_collection_file(offline_env)
+    contract_path = _write_contract_file(offline_env)
+
+    exit_code = main(
+        ["generate", "--file", str(collection_path), "--contract-file", str(contract_path), "--yes"]
+    )
+
+    assert exit_code == SUCCESS
+    out = capsys.readouterr().out
+    assert "contract-match-report.json" in out
+    assert "contract-match-report.html" in out
+
+    report_dir = offline_env / "artifacts" / "local"
+    json_reports = list(report_dir.rglob("contract-match-report.json"))
+    html_reports = list(report_dir.rglob("contract-match-report.html"))
+    assert len(json_reports) == 1
+    assert len(html_reports) == 1
+
+    payload = json.loads(json_reports[0].read_text(encoding="utf-8"))
+    assert payload["summary"]["matched"] == 1
+
+
 def test_generate_from_file_with_contract_file_output_never_contains_a_leftover_api_key(
     offline_env, monkeypatch, capsys
 ):

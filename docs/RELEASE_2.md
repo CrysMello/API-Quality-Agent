@@ -248,6 +248,75 @@ dependência de desenvolvimento (stubs pro `mypy`).
     tratamento de exceção específico pra isso ainda. Não é uma quebra (a
     CLI já captura genericamente e nunca deixa vazar um traceback cru), só
     uma classificação de código de saída menos precisa do que o ideal.
+- [x] **Fase 5 — Contract Match Report** (R2-08, concluída; componentes de
+      relatório isolados, **ainda não conectados ao fluxo de `generate`**)
+  - `reporting/contract_match_report.py`: `ContractMatchEntry`/
+    `ContractMatchSummary`/`ContractMatchReport` + `build_contract_match_report(source_file, results)`,
+    construído a partir de `tuple[ContractMatchResult, ...]` (o mesmo tipo
+    que `ContractEndpointMatcher.match_all()` já produz desde a R2-04).
+    `schema_version` obrigatório (adendo v1.1); entradas `AMBIGUOUS` carregam
+    `candidate_sheets` (nunca escolhem uma automaticamente); entradas
+    `MATCHED` carregam `sheet`/`declared_path`; `NOT_FOUND` não carrega
+    dado extra.
+  - `reporting/contract_match_report_serializer.py`: `serialize_contract_match_report`/
+    `render_contract_match_report_json` — schema `{schema_version, source,
+    summary: {contracts, matched, not_found, ambiguous}, matches: [...]}`,
+    igual ao SAD 12.1.
+  - `reporting/contract_match_report_summary_renderer.py`: resumo em texto
+    pro terminal, igual ao formato do SAD 12.2.
+  - `reporting/contract_match_report_html_renderer.py`: **decidi que faz
+    sentido pro projeto** — mesma justificativa do relatório de execução já
+    existente (escaneabilidade visual de status MATCHED/NOT_FOUND/AMBIGUOUS
+    por várias linhas), reaproveitando a mesma convenção visual
+    (autocontido, dark-mode aware, sem CSS/JS remoto).
+  - **Não incluído nesta etapa, de propósito**: correlação com
+    `INVALID_CONTRACT` do `ExcelContractValidator` (R2-03) — os
+    diagnósticos de validação são por linha/campo da planilha, os do
+    matcher são por endpoint; juntar os dois exige uma lógica de
+    correlação que não foi pedida aqui.
+  - Testes: `tests/unit/test_contract_match_report.py` (9 — contagens do
+    resumo, dados por status, formato JSON exato, resumo em texto, HTML
+    com escaping e caso vazio).
+  - `mypy src`: limpo (219 arquivos). `pytest`: 979 passed, 1 skipped.
+  - Ruff: mesma situação já registrada (não instalado/configurado; nada de
+    ferramental alterado).
+- [x] **Integração do `ContractEndpointMatcher` a `generate --contract-file`
+      + persistência dos relatórios de matching** (R2-09, concluída)
+  - `GenerateTestsWithContractUseCase` agora roda o matcher uma segunda vez
+    sobre **todas** as requests do documento (chamada extra a
+    `ApiAnalysisEngine.analyze_collection_requests` — pura/sem estado,
+    mesma decisão já registrada na R2-00: repetir isso não tem efeito
+    colateral) e salva `contract-match-report.json`/`.html` como artefatos,
+    na **mesma pasta de execução** dos `scripts`/`diffs` já existentes
+    (`category="contracts"`). As duas novas localizações aparecem em
+    `result.artifact_locations`, então `_print_generation_summary` do CLI
+    já mostra os caminhos sem precisar de nenhuma mudança no comando.
+  - Corrigido um import circular real que essa mudança introduziu
+    (`application.use_cases` → `reporting` → `application.use_cases`, via
+    `report_engine.py`/`CollectionUpdateResult`) — resolvido com um import
+    local dentro do método que usa `reporting`, sem tocar em nenhum dos
+    dois módulos já existentes.
+  - Testes: `tests/unit/test_generate_tests_with_contract_use_case.py`
+    (4 — relatório salvo com MATCHED, relatório com NOT_FOUND, mesma pasta
+    de execução que scripts/diffs, erro claro sem dependências online) +
+    1 teste novo em `test_cli_generate_contract_file.py` (relatório
+    aparece no resumo impresso e no disco, com a contagem certa).
+  - `mypy src`: limpo (219 arquivos). `pytest`: 984 passed, 1 skipped.
+  - Testado manualmente ponta a ponta num caminho curto (ver observação
+    abaixo) — `collection.json` + `contrato.xlsx` reais →
+    `contract-match-report.json` com `"status": "MATCHED"` e o path
+    declarado/aba corretos.
+  - **Observação de ambiente, não é bug do produto**: durante o teste
+    manual, o primeiro caminho de scratch usado (bem profundo, próprio da
+    estrutura de diretório temporário desta sessão) estourou o limite
+    clássico do Windows de 260 caracteres (`MAX_PATH`) especificamente no
+    arquivo `contract-match-report.json` (264 caracteres) — os artefatos
+    `scripts`/`diffs`, com nomes mais curtos, ficaram just abaixo do
+    limite. Refeito num caminho curto, funcionou perfeitamente. O caminho
+    real do projeto (`C:\Users\...\API-Quality-Agent`) é bem mais curto que
+    o do scratch usado no teste, então isso não deve afetar o uso normal —
+    mas é um limite real do Windows a ter em mente se os artefatos forem
+    salvos em uma árvore de diretórios muito profunda.
 - [ ] **Fase 4** — characterization tests do `AgentOrchestrator` atual,
       depois `SchemaProvider` (porta) + `InferenceSchemaProvider`/
       `DeclaredSchemaProvider` + mudança aditiva no `AgentOrchestrator`.
