@@ -7,6 +7,7 @@ from api_quality_agent.ports.outbound.execution_result_repository import (
     ExecutionResultRepository,
 )
 from api_quality_agent.ports.outbound.report_writer import ReportWriter
+from api_quality_agent.ports.outbound.schema_provider import SchemaProvider
 from api_quality_agent.ports.outbound.selection_repository import SelectionRepository
 from api_quality_agent.ports.outbound.snapshot_repository import SnapshotRepository
 from api_quality_agent.ports.outbound.workspace_repository import WorkspaceRepository
@@ -19,6 +20,7 @@ __all__ = [
     "ExecutionResultReader",
     "ExecutionResultRepository",
     "ReportWriter",
+    "SchemaProvider",
     "SelectionRepository",
     "SnapshotRepository",
     "WorkspaceRepository",

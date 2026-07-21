@@ -144,6 +144,38 @@ dependência de desenvolvimento (stubs pro `mypy`).
   - Ainda falta desta fase: `InfrastructureVariableResolver` (resolução de
     `{{baseUrl}}`/prefixo fixo via `--collection-path-prefix`) — decisão
     explícita de deixar fora deste passo (ver R2-04).
+- [x] **Fase 4 (parcial) — `SchemaProvider`** (R2-05, concluída; `AgentOrchestrator`
+      **ainda não foi alterado**, conforme pedido)
+  - `ports/outbound/schema_provider.py` (`SchemaProvider`, `Protocol`
+    `runtime_checkable`, seguindo a mesma convenção das portas já
+    existentes): `resolve(request: CollectionRequest) -> SchemaResolution`.
+    Sem `status_code` no método — consistente com a decisão R2-00B (só
+    schema de sucesso, sem lógica de seleção por status).
+  - `domain/models/schema_resolution.py` (`SchemaResolution`): `schema:
+    dict | None` + `warnings` (reaproveita `SchemaInferenceWarning`
+    existente — nenhum tipo de warning novo).
+  - `domain/services/excel_schema_provider.py` (`ExcelSchemaProvider`):
+    normaliza a request via `CanonicalEndpointNormalizer`, casa com o
+    catálogo via `ContractEndpointMatcher`; só devolve schema quando o
+    resultado é `MATCHED` **e** o contrato tem `response.schema` declarado;
+    `NOT_FOUND`/`AMBIGUOUS`/schema ausente/URL inválida → `schema=None`,
+    nunca levanta exceção. Inclui o conversor `DeclaredSchema` → dict de
+    JSON Schema (necessário pra alimentar o `TestStrategyEngine` mais
+    adiante).
+  - `domain/services/inference_schema_provider.py` (`InferenceSchemaProvider`):
+    replica o comportamento já existente hoje em
+    `AgentOrchestrator._infer_response_schema` (extrai e desserializa
+    Examples salvos, chama `SchemaInferenceEngine`). Duplicação **temporária
+    e consciente** — o método privado original continua no orchestrator até
+    a próxima etapa fazer a substituição de verdade.
+  - Testes: `tests/unit/test_schema_provider.py` (2 — conformidade com o
+    Protocol), `tests/unit/test_excel_schema_provider.py` (7),
+    `tests/unit/test_inference_schema_provider.py` (5).
+  - `mypy src`: limpo (213 arquivos). `pytest`: 960 passed, 1 skipped.
+  - Ferramental: Ruff não executado (não instalado/configurado no projeto —
+    já documentado como limitação conhecida no README, tratamento fica pra
+    tarefa independente futura). `mypy` e `pytest` executados com sucesso;
+    nenhuma dependência ou configuração de ferramental foi alterada.
 - [ ] **Fase 4** — characterization tests do `AgentOrchestrator` atual,
       depois `SchemaProvider` (porta) + `InferenceSchemaProvider`/
       `DeclaredSchemaProvider` + mudança aditiva no `AgentOrchestrator`.

@@ -85,6 +85,7 @@ from api_quality_agent.domain.models.response_definition import ResponseDefiniti
 from api_quality_agent.domain.models.schema_inference_policy import SchemaInferencePolicy
 from api_quality_agent.domain.models.schema_inference_result import SchemaInferenceResult
 from api_quality_agent.domain.models.schema_inference_warning import SchemaInferenceWarning
+from api_quality_agent.domain.models.schema_resolution import SchemaResolution
 from api_quality_agent.domain.models.security_definition import SecurityDefinition
 from api_quality_agent.domain.models.selection_origin import SelectionOrigin
 from api_quality_agent.domain.models.snapshot_key import SnapshotKey
@@ -178,6 +179,7 @@ __all__ = [
     "SchemaInferencePolicy",
     "SchemaInferenceResult",
     "SchemaInferenceWarning",
+    "SchemaResolution",
     "SecurityDefinition",
     "SelectionOrigin",
     "SnapshotKey",

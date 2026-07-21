@@ -9,6 +9,8 @@ from api_quality_agent.domain.services.collection_selection_service import (
 from api_quality_agent.domain.services.contract_comparison_engine import ContractComparisonEngine
 from api_quality_agent.domain.services.contract_endpoint_matcher import ContractEndpointMatcher
 from api_quality_agent.domain.services.diff_engine import DiffEngine
+from api_quality_agent.domain.services.excel_schema_provider import ExcelSchemaProvider
+from api_quality_agent.domain.services.inference_schema_provider import InferenceSchemaProvider
 from api_quality_agent.domain.services.managed_block_merger import ManagedBlockMerger
 from api_quality_agent.domain.services.managed_block_parser import ManagedBlockParser
 from api_quality_agent.domain.services.postman_request_normalizer import PostmanRequestNormalizer
@@ -23,6 +25,8 @@ __all__ = [
     "ContractComparisonEngine",
     "ContractEndpointMatcher",
     "DiffEngine",
+    "ExcelSchemaProvider",
+    "InferenceSchemaProvider",
     "ManagedBlockMerger",
     "ManagedBlockParser",
     "PostmanRequestNormalizer",
