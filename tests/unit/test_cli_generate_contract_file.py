@@ -163,3 +163,67 @@ def test_generate_from_file_with_contract_file_output_never_contains_a_leftover_
     captured = capsys.readouterr()
     assert FAKE_API_KEY not in captured.out
     assert FAKE_API_KEY not in captured.err
+
+
+# Correção dos exit codes: arquivo de contrato inexistente/vazio/corrompido
+# deve resultar no código de saída 2 (entrada inválida), não no código 8
+# (erro inesperado) que era retornado antes desta correção.
+
+
+def test_generate_with_nonexistent_contract_file_returns_invalid_input_exit_code(offline_env, capsys):
+    collection_path = _write_collection_file(offline_env)
+    missing_contract_path = offline_env / "nao_existe.xlsx"
+
+    exit_code = main(
+        [
+            "generate",
+            "--file",
+            str(collection_path),
+            "--contract-file",
+            str(missing_contract_path),
+            "--yes",
+        ]
+    )
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+    assert "Erro inesperado" not in capsys.readouterr().out
+
+
+def test_generate_with_empty_contract_file_returns_invalid_input_exit_code(offline_env, capsys):
+    collection_path = _write_collection_file(offline_env)
+    empty_contract_path = offline_env / "vazio.xlsx"
+    empty_contract_path.write_bytes(b"")
+
+    exit_code = main(
+        [
+            "generate",
+            "--file",
+            str(collection_path),
+            "--contract-file",
+            str(empty_contract_path),
+            "--yes",
+        ]
+    )
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+    assert "Erro inesperado" not in capsys.readouterr().out
+
+
+def test_generate_with_corrupted_contract_file_returns_invalid_input_exit_code(offline_env, capsys):
+    collection_path = _write_collection_file(offline_env)
+    corrupted_contract_path = offline_env / "corrompido.xlsx"
+    corrupted_contract_path.write_bytes(b"isto nao e um arquivo zip valido")
+
+    exit_code = main(
+        [
+            "generate",
+            "--file",
+            str(collection_path),
+            "--contract-file",
+            str(corrupted_contract_path),
+            "--yes",
+        ]
+    )
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+    assert "Erro inesperado" not in capsys.readouterr().out

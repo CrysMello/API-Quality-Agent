@@ -1,6 +1,11 @@
 import openpyxl
 import pytest
 
+from api_quality_agent.domain.exceptions import (
+    CorruptedInputFileError,
+    EmptyInputError,
+    InputFileNotFoundError,
+)
 from api_quality_agent.domain.models import DeclaredSchema, ParameterLocation
 from api_quality_agent.parsers import ExcelContractParser
 
@@ -227,3 +232,57 @@ def test_array_with_a_single_child_still_becomes_an_object_item_schema(tmp_path)
     assert itens.items is not None
     assert itens.items.type == "object"
     assert itens.items.properties[0].name == "codigo"
+
+
+# Correção dos exit codes: arquivo de contrato inexistente/vazio/corrompido/
+# sem permissão/caminho inválido deve virar um InputError (exit code 2), não
+# escapar como exceção crua (o que hoje cairia no catch-all de main.py e
+# resultaria no exit code 8).
+
+
+def test_nonexistent_contract_file_raises_input_file_not_found_error(tmp_path):
+    missing_path = tmp_path / "nao_existe.xlsx"
+
+    with pytest.raises(InputFileNotFoundError):
+        ExcelContractParser().parse(missing_path)
+
+
+def test_directory_as_contract_file_raises_input_file_not_found_error(tmp_path):
+    directory_path = tmp_path / "diretorio.xlsx"
+    directory_path.mkdir()
+
+    with pytest.raises(InputFileNotFoundError):
+        ExcelContractParser().parse(directory_path)
+
+
+def test_empty_contract_file_raises_empty_input_error(tmp_path):
+    empty_path = tmp_path / "vazio.xlsx"
+    empty_path.write_bytes(b"")
+
+    with pytest.raises(EmptyInputError):
+        ExcelContractParser().parse(empty_path)
+
+
+def test_corrupted_contract_file_raises_corrupted_input_file_error(tmp_path):
+    corrupted_path = tmp_path / "corrompido.xlsx"
+    corrupted_path.write_bytes(b"isto nao e um arquivo zip valido")
+
+    with pytest.raises(CorruptedInputFileError):
+        ExcelContractParser().parse(corrupted_path)
+
+
+def test_unreadable_contract_file_raises_corrupted_input_file_error(tmp_path, monkeypatch):
+    # PermissionError é um OSError levantado pelo próprio openpyxl ao tentar
+    # abrir um arquivo sem permissão de leitura — simulado aqui via
+    # monkeypatch porque negar permissão de leitura de forma confiável e
+    # portável (Windows/POSIX) num arquivo real de teste não é viável.
+    path = tmp_path / "sem_permissao.xlsx"
+    path.write_bytes(b"conteudo irrelevante, load_workbook e substituido abaixo")
+
+    def _raise_permission_error(*args, **kwargs):
+        raise PermissionError(f"Sem permissão para ler {path}")
+
+    monkeypatch.setattr(openpyxl, "load_workbook", _raise_permission_error)
+
+    with pytest.raises(CorruptedInputFileError):
+        ExcelContractParser().parse(path)

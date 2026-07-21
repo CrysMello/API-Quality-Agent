@@ -23,3 +23,7 @@ class InputEncodingError(InputError):
 
 class InvalidJsonError(InputError):
     pass
+
+
+class CorruptedInputFileError(InputError):
+    pass

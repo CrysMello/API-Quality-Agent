@@ -18,11 +18,15 @@ from api_quality_agent.cli.exit_codes import (
 from api_quality_agent.domain.exceptions import (
     AmbiguousResourceError,
     AuthenticationError,
+    CorruptedInputFileError,
+    EmptyInputError,
     InputError,
+    InputFileNotFoundError,
     ResourceNotFoundError,
     UpdateNotApprovedError,
 )
 from api_quality_agent.domain.services import ApprovalPolicy
+from api_quality_agent.parsers import ExcelContractParser
 
 
 def test_successful_workspace_selection_maps_to_success_exit_code(postman_test_server, tmp_path):
@@ -89,5 +93,41 @@ def test_missing_workspace_selection_maps_to_invalid_input_exit_code(postman_tes
 
     with pytest.raises(InputError) as exc_info:
         app.list_collections.execute()
+
+    assert resolve_exit_code(exc_info.value) == INVALID_INPUT_OR_CONFIGURATION
+
+
+# Correção dos exit codes (R2): arquivo de contrato Excel inexistente/vazio/
+# corrompido lançado por ExcelContractParser.parse() precisa mapear pro
+# mesmo código 2 usado por qualquer outra entrada inválida — antes desta
+# correção, essas exceções cruas do openpyxl escapavam sem tradução e
+# caíam no catch-all de cli.main, resultando no código 8 (erro inesperado).
+
+
+def test_nonexistent_contract_file_maps_to_invalid_input_exit_code(tmp_path):
+    missing_path = tmp_path / "nao_existe.xlsx"
+
+    with pytest.raises(InputFileNotFoundError) as exc_info:
+        ExcelContractParser().parse(missing_path)
+
+    assert resolve_exit_code(exc_info.value) == INVALID_INPUT_OR_CONFIGURATION
+
+
+def test_empty_contract_file_maps_to_invalid_input_exit_code(tmp_path):
+    empty_path = tmp_path / "vazio.xlsx"
+    empty_path.write_bytes(b"")
+
+    with pytest.raises(EmptyInputError) as exc_info:
+        ExcelContractParser().parse(empty_path)
+
+    assert resolve_exit_code(exc_info.value) == INVALID_INPUT_OR_CONFIGURATION
+
+
+def test_corrupted_contract_file_maps_to_invalid_input_exit_code(tmp_path):
+    corrupted_path = tmp_path / "corrompido.xlsx"
+    corrupted_path.write_bytes(b"isto nao e um arquivo zip valido")
+
+    with pytest.raises(CorruptedInputFileError) as exc_info:
+        ExcelContractParser().parse(corrupted_path)
 
     assert resolve_exit_code(exc_info.value) == INVALID_INPUT_OR_CONFIGURATION

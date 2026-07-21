@@ -331,8 +331,12 @@ dependência de desenvolvimento (stubs pro `mypy`).
   não existe um modo que transforme isso em falha (útil pra CI).
 - **Correlação `INVALID_CONTRACT`** — diagnósticos do `ExcelContractValidator`
   (por linha/campo) não aparecem no Contract Match Report (por endpoint).
-- **Exit code impreciso** — arquivo de contrato ausente/corrompido mapeia
-  pro código 8 (inesperado) em vez de 2 (entrada inválida).
+- ~~Exit code impreciso~~ — **feito**: `ExcelContractParser.parse()` agora
+  traduz `FileNotFoundError`/`zipfile.BadZipFile`/`InvalidFileException`/
+  `PermissionError`/`OSError` do `openpyxl` em `InputFileNotFoundError`/
+  `EmptyInputError`/`CorruptedInputFileError` (subclasses já existentes ou
+  nova de `InputError`), que já mapeiam pro código 2 na tabela existente de
+  `cli/exit_codes.py` — nenhuma mudança nessa tabela. Ver checklist abaixo.
 - ~~README/GUIA_DE_USO.md nunca foram atualizados~~ — **feito**: seção
   dedicada "Contrato declarado em planilha Excel" no README + pergunta nova
   no GUIA_DE_USO.md (`GUIA_DE_USO.md` continua fora de controle de versão,
@@ -347,3 +351,59 @@ dependência de desenvolvimento (stubs pro `mypy`).
   ganhou uma linha referenciando o novo arquivo (fora da numeração dos 20
   cenários do MVP original). `mypy src`: limpo (219 arquivos). `pytest`:
   986 passed, 1 skipped.
+- [x] **Correção dos exit codes de `ExcelContractParser`** (tarefa
+      independente da numeração R2-0X, mas parte da mesma iniciativa —
+      fechava a limitação conhecida desde a R2-09)
+  - `ExcelContractParser.parse()` (`parsers/excel_contract_parser.py`)
+    ganhou verificação explícita de `path.is_file()` (cobre arquivo
+    inexistente **e** caminho apontando pra diretório, mesmo padrão já usado
+    por `InputResolver.resolve_from_file`) → `InputFileNotFoundError`;
+    `stat().st_size == 0` → `EmptyInputError` (reaproveitado, já existia);
+    e um `try/except` em volta de `openpyxl.load_workbook(...)` capturando
+    `zipfile.BadZipFile`, `openpyxl.utils.exceptions.InvalidFileException`
+    e `OSError` (cobre `PermissionError`, que é subclasse) → nova
+    `CorruptedInputFileError(InputError)`.
+  - Nova exceção `CorruptedInputFileError` adicionada a
+    `domain/exceptions/input_errors.py` (mesmo arquivo de
+    `InputFileNotFoundError`/`EmptyInputError`, por ser a mesma categoria:
+    "arquivo de entrada ilegível", não específica de contrato) e exportada
+    em `domain/exceptions/__init__.py`. **`cli/exit_codes.py` não foi
+    alterado** — `InputError` já mapeia pro código 2, então as três
+    exceções (`InputFileNotFoundError`/`EmptyInputError`/
+    `CorruptedInputFileError`, todas subclasses de `InputError`) caem na
+    entrada já existente da tabela, sem tocar no código de saída de
+    nenhum outro tipo de falha.
+  - Exceções raízes confirmadas empiricamente (script descartável) antes de
+    implementar: `FileNotFoundError` (arquivo inexistente),
+    `zipfile.BadZipFile` (arquivo corrompido/vazio — um `.xlsx` de 0 bytes
+    também cai aqui, por isso o pré-check de tamanho evita depender do
+    `openpyxl` pra esse caso), `InvalidFileException` (diretório passado no
+    lugar de arquivo, embora o pré-check de `is_file()` já intercepte esse
+    caso antes de chegar no `openpyxl`).
+  - `PermissionError` ("arquivo sem permissão") não foi reproduzido com um
+    arquivo real — negar permissão de leitura de forma confiável e portável
+    entre Windows/POSIX num teste não é viável; coberto via
+    `monkeypatch.setattr(openpyxl, "load_workbook", ...)` levantando
+    `PermissionError` diretamente, validando só a tradução de exceção (que é
+    o que este código realmente controla).
+  - "Caminho inválido" (item pedido nos testes obrigatórios) é coberto pelo
+    mesmo caso de diretório-como-arquivo (`is_file()` retorna `False`) — não
+    foi identificado nenhum cenário adicional de caminho sintaticamente
+    inválido que `Path.is_file()` não já trate retornando `False` (a própria
+    implementação do `pathlib` absorve `OSError` internamente nesse método).
+  - Testes novos (11 no total):
+    `tests/unit/test_excel_contract_parser.py` (5 — inexistente, diretório,
+    vazio, corrompido, sem permissão via monkeypatch);
+    `tests/unit/test_cli_generate_contract_file.py` (3 — mesmos três
+    primeiros cenários, agora ponta a ponta via `cli.main.main()`,
+    confirmando o exit code 2 e ausência da mensagem genérica "Erro
+    inesperado");
+    `tests/acceptance/test_cli_exit_codes.py` (3 — mesmo padrão já usado
+    neste arquivo, exceção real + `resolve_exit_code()`, pros três cenários
+    reproduzíveis sem monkeypatch).
+  - `mypy src`: limpo (219 arquivos). `pytest`: 997 passed, 1 skipped.
+  - Ruff: mesma situação já registrada (não instalado/configurado; nada de
+    ferramental alterado).
+  - **Nenhum outro código de saída foi alterado** — confirmado lendo
+    `cli/exit_codes.py` antes e depois: nenhuma linha da tabela
+    `_EXCEPTION_EXIT_CODES` foi tocada.

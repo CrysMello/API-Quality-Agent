@@ -19,6 +19,7 @@ from api_quality_agent.domain.exceptions.execution_result_errors import (
     UnsupportedExecutionResultSchemaError,
 )
 from api_quality_agent.domain.exceptions.input_errors import (
+    CorruptedInputFileError,
     EmptyInputError,
     InputEncodingError,
     InputFileNotFoundError,
@@ -49,6 +50,7 @@ __all__ = [
     "BaselineAlreadyExistsError",
     "ConfigurationError",
     "ConflictError",
+    "CorruptedInputFileError",
     "CorruptedManagedBlockError",
     "DuplicateManagedBlockError",
     "EmptyInputError",

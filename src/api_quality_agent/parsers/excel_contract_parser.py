@@ -1,11 +1,18 @@
 import re
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import openpyxl
+from openpyxl.utils.exceptions import InvalidFileException
 from openpyxl.worksheet.worksheet import Worksheet
 
+from api_quality_agent.domain.exceptions import (
+    CorruptedInputFileError,
+    EmptyInputError,
+    InputFileNotFoundError,
+)
 from api_quality_agent.domain.models import (
     DeclaredContractCatalog,
     DeclaredEndpointContract,
@@ -75,7 +82,19 @@ class _NormalizedRow:
 class ExcelContractParser:
     def parse(self, file_path: str | Path) -> ExcelParseResult:
         path = Path(file_path)
-        workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
+
+        if not path.is_file():
+            raise InputFileNotFoundError(f"Arquivo de contrato não encontrado: {path}")
+        if path.stat().st_size == 0:
+            raise EmptyInputError(f"Arquivo de contrato vazio: {path}")
+
+        try:
+            workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        except (zipfile.BadZipFile, InvalidFileException, OSError) as exc:
+            raise CorruptedInputFileError(
+                f"Não foi possível ler o arquivo de contrato como planilha .xlsx válida: {path} ({exc})"
+            ) from exc
+
         try:
             all_raw_rows: list[RawContractRow] = []
             contracts: list[DeclaredEndpointContract] = []
