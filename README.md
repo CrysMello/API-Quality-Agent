@@ -225,12 +225,25 @@ Como funciona, por dentro: `ExcelContractParser` lê a planilha (seções de Hea
 
 Endpoints pareados usam o schema declarado; **endpoints sem contrato pareado continuam funcionando exatamente como antes** (inferência a partir de Examples salvos, via `FallbackSchemaProvider`) — `--contract-file` nunca faz uma Collection que já funcionava parar de gerar testes. Depois da geração, um relatório de correspondência é salvo junto dos demais artefatos (`artifacts/.../contracts/contract-match-report.json` e `.html`), mostrando o que casou, o que não foi encontrado e o que ficou ambíguo — ambiguidade **nunca** é resolvida escolhendo uma request automaticamente.
 
+`ExcelContractValidator` roda automaticamente (sem flag) toda vez que `--contract-file` é usado, e seus diagnósticos (tipo desconhecido, sequencial duplicado/órfão, etc.) aparecem correlacionados no próprio relatório: entradas `MATCHED` carregam `validation_issues` da sua aba, entradas `AMBIGUOUS` carregam `candidate_validation_issues` separado por candidato, e a lista completa (inclusive diagnósticos de abas sem contrato utilizável) sempre aparece em `validation_issues` no nível raiz do JSON. Entradas `NOT_FOUND` **nunca** recebem correlação — não há nenhuma aba associada a um "não encontrado", então nenhuma causa é afirmada sem evidência determinística. Um contrato parcialmente inválido (ex.: um campo com tipo desconhecido) ainda entra no catálogo e ainda é pareado normalmente — `MATCHED` e `validation_issues` convivem na mesma entrada.
+
+```bash
+# Prefixo fixo de path presente só nas requests da Collection (ex.: de um
+# gateway), ausente do path declarado no contrato — removido só por
+# correspondência exata de segmentos no início do path
+api-quality-agent generate --collection-id <id> --contract-file contrato.xlsx --collection-path-prefix /api
+
+# Falha o comando (exit code 1) se algum endpoint ficar sem contrato
+# correspondente (UNMATCHED) ou com correspondência ambígua (AMBIGUOUS) —
+# útil em CI; o relatório ainda é gerado e persistido antes da falha
+api-quality-agent generate --collection-id <id> --contract-file contrato.xlsx --strict-contract-match
+```
+
 **Escopo desta primeira versão** (decisões deliberadas, documentadas para transparência, não débito técnico):
 - Só o schema da resposta de sucesso (HTTP 200) é usado — outras seções de status (400, 404, 500...) são reconhecidas pelo parser (não quebram a leitura) mas descartadas; sem lógica de seleção de schema por status recebido em runtime, sem asserção condicional em `pm.response.code`.
 - Coluna `Tamanho` e `Regras (Domínio)` não são interpretadas (sem `maxLength`/`pattern`/etc.).
-- Sem resolução de variável de infraestrutura além do já descrito (não há `--collection-path-prefix` nem suporte a prefixo fixo de path diferente entre a planilha e a Collection).
-- Sem `--strict-contract-match` — endpoint sem match ou ambíguo nunca vira falha, só cai pra inferência silenciosamente.
-- O relatório de correspondência não correlaciona com os diagnósticos do `ExcelContractValidator` (que são por linha/campo da planilha, não por endpoint).
+- `--strict-contract-match` falha só por `UNMATCHED`/`AMBIGUOUS` — diagnósticos de validação nunca alteram o exit code.
+- Sem suporte a múltiplos contratos declarados na mesma aba (uma aba = no máximo um contrato) nem correlação por faixa de linhas.
 - `generate --contract-file` nunca atualiza a Collection remota — combina normalmente com o fluxo `update` já existente (revisão manual antes de aplicar).
 
 ### Gestão de artefatos
