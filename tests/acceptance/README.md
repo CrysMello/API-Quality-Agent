@@ -30,6 +30,11 @@ pytest tests/acceptance -v
 - `test_offline_mode.py`, `test_workspace_and_collection_selection.py`,
   `test_generation_and_isolation.py`, `test_update_and_approval.py`,
   `test_execution_and_reporting.py`, `test_cli_exit_codes.py`.
+- `test_contract_declared_schema.py` — Release 2 (Integração de Contratos
+  Excel): jornada completa de `generate --contract-file` (schema declarado
+  pareado com uma request real, e fallback pra inferência quando não há
+  match). Não faz parte da numeração de cenários do MVP original abaixo —
+  ver `docs/RELEASE_2.md` na raiz do projeto para o detalhamento da R2.
 
 ## Matriz requisito × teste
 

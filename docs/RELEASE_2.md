@@ -333,10 +333,17 @@ dependência de desenvolvimento (stubs pro `mypy`).
   (por linha/campo) não aparecem no Contract Match Report (por endpoint).
 - **Exit code impreciso** — arquivo de contrato ausente/corrompido mapeia
   pro código 8 (inesperado) em vez de 2 (entrada inválida).
-- **README/GUIA_DE_USO.md nunca foram atualizados** pra documentar
-  `generate --contract-file` — hoje só existe documentação técnica interna
-  (este arquivo). Do ponto de vista de quem usa a ferramenta (não lê este
-  documento), a funcionalidade inteira está invisível.
-- **Nenhum cenário novo em `tests/acceptance/`** exercitando a jornada
-  completa de contrato (hoje só há cobertura unitária + testes manuais
-  pontuais, sem um cenário formal ao lado dos 20 já existentes).
+- ~~README/GUIA_DE_USO.md nunca foram atualizados~~ — **feito**: seção
+  dedicada "Contrato declarado em planilha Excel" no README + pergunta nova
+  no GUIA_DE_USO.md (`GUIA_DE_USO.md` continua fora de controle de versão,
+  por escolha explícita já registrada nesta sessão).
+- ~~Nenhum cenário novo em `tests/acceptance/`~~ — **feito**:
+  `tests/acceptance/test_contract_declared_schema.py` (2 testes — schema
+  declarado pareando com uma request real via `GenerateTestsWithContractUseCase`
+  contra o servidor Postman simulado, e fallback pra inferência quando o
+  contrato não casa com nenhuma request). `conftest.py` **não foi alterado**
+  — a composição do use case foi feita localmente no novo arquivo,
+  reaproveitando só o que `build_app()` já expõe. `tests/acceptance/README.md`
+  ganhou uma linha referenciando o novo arquivo (fora da numeração dos 20
+  cenários do MVP original). `mypy src`: limpo (219 arquivos). `pytest`:
+  986 passed, 1 skipped.
