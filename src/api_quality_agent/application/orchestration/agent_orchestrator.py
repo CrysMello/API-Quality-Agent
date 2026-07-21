@@ -1,5 +1,3 @@
-import json
-
 from api_quality_agent.application.orchestration.collection_generation_result import (
     CollectionGenerationResult,
 )
@@ -15,16 +13,17 @@ from api_quality_agent.domain.models import (
     CollectionRequest,
     ExecutionContext,
     PostmanCollectionDocument,
-    SchemaInferenceWarning,
 )
 from api_quality_agent.domain.services import (
     ApiAnalysisEngine,
     DiffEngine,
+    InferenceSchemaProvider,
     ManagedBlockMerger,
     SchemaInferenceEngine,
     TestStrategyEngine,
 )
 from api_quality_agent.generators import GeneratedTestScript, PostmanTestGenerator
+from api_quality_agent.ports.outbound import SchemaProvider
 
 DEFAULT_MANAGED_BLOCK_ID = "api-quality-agent-tests"
 
@@ -33,7 +32,7 @@ class AgentOrchestrator:
     def __init__(
         self,
         analysis_engine: ApiAnalysisEngine,
-        schema_inference_engine: SchemaInferenceEngine,
+        schema_provider: SchemaProvider | SchemaInferenceEngine,
         test_strategy_engine: TestStrategyEngine,
         test_generator: PostmanTestGenerator,
         managed_block_merger: ManagedBlockMerger,
@@ -41,8 +40,18 @@ class AgentOrchestrator:
         *,
         managed_block_id: str = DEFAULT_MANAGED_BLOCK_ID,
     ) -> None:
+        # Retrocompatibilidade (R2-06): quem já constrói o orchestrator
+        # passando um SchemaInferenceEngine "cru" (todo callsite existente,
+        # inclusive testes) continua funcionando sem nenhuma mudança — ele é
+        # empacotado automaticamente num InferenceSchemaProvider, que
+        # reproduz exatamente o comportamento anterior. Um SchemaProvider
+        # (ex.: ExcelSchemaProvider) pode ser passado diretamente.
         self._analysis_engine = analysis_engine
-        self._schema_inference_engine = schema_inference_engine
+        self._schema_provider: SchemaProvider = (
+            InferenceSchemaProvider(schema_provider)
+            if isinstance(schema_provider, SchemaInferenceEngine)
+            else schema_provider
+        )
         self._test_strategy_engine = test_strategy_engine
         self._test_generator = test_generator
         self._managed_block_merger = managed_block_merger
@@ -89,7 +98,8 @@ class AgentOrchestrator:
         endpoint_analysis = analyzed.analysis
 
         try:
-            response_schema, schema_warnings = self._infer_response_schema(raw_request)
+            resolution = self._schema_provider.resolve(raw_request)
+            response_schema, schema_warnings = resolution.schema, resolution.warnings
 
             strategy = self._test_strategy_engine.build_strategy(
                 endpoint_analysis, response_schema=response_schema
@@ -124,24 +134,6 @@ class AgentOrchestrator:
                 error=str(exc),
             )
             return outcome, None
-
-    def _infer_response_schema(
-        self, raw_request: CollectionRequest
-    ) -> tuple[dict | None, tuple[SchemaInferenceWarning, ...]]:
-        parsed_examples = []
-        for example in raw_request.examples:
-            if not example.body:
-                continue
-            try:
-                parsed_examples.append(json.loads(example.body))
-            except json.JSONDecodeError:
-                continue  # example salvo não é JSON: ignorado, não é um erro fatal
-
-        if not parsed_examples:
-            return None, ()
-
-        schema_result = self._schema_inference_engine.infer(parsed_examples)
-        return schema_result.schema, schema_result.warnings
 
     def _apply_managed_block(
         self, raw_request: CollectionRequest, generated_script: GeneratedTestScript
