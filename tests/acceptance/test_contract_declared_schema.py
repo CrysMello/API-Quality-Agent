@@ -137,6 +137,9 @@ def test_generate_with_excel_contract_matches_a_real_collection_request(
     assert payload["summary"]["matched"] == 1
     assert payload["matches"][0]["status"] == "MATCHED"
     assert payload["matches"][0]["sheet"] == "Pets"
+    # Contrato válido: nenhum diagnóstico de validação correlacionado.
+    assert "validation_issues" not in payload["matches"][0]
+    assert "validation_issues" not in payload
 
     # O relatório também é salvo em HTML, na mesma pasta de execução.
     html_report = next(
@@ -270,3 +273,165 @@ def test_generate_with_collection_path_prefix_matches_a_gateway_collection(
     assert payload["summary"]["matched"] == 1
     assert payload["matches"][0]["status"] == "MATCHED"
     assert payload["matches"][0]["sheet"] == "Pets"
+
+
+# R2-09A: correlação entre os diagnósticos do ExcelContractValidator (agora
+# rodando automaticamente, sem flag) e o Contract Match Report. Também
+# confirma regressão zero de --collection-path-prefix e --strict-contract-match.
+
+
+def test_generate_with_partially_invalid_contract_still_matches_and_shows_the_diagnostic(
+    postman_test_server, tmp_path
+):
+    # Contrato com um campo de schema inválido ainda entra no catálogo e
+    # ainda casa com a request real (parser e validator são passes
+    # desacoplados) — MATCHED e validation_issues coexistem no relatório.
+    _configure_server(postman_test_server)
+    app = build_app(postman_test_server, tmp_path)
+    app.select_workspace.execute(workspace_id=WORKSPACE_ID)
+
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Pets"
+    rows = [
+        ["URI", "/pets/{{petId}}"],
+        ["Método", "GET"],
+        ["Resposta caso HTTP Status code 200 - OK"],
+        _HEADER_ROW,
+        ["1", "dado", "Objeto", None, "SIM"],
+        ["1.1", "id", "Alfanumerico", 10, "SIM"],
+        ["1.2", "campoRuim", "TipoInvalido", 10, "SIM"],
+    ]
+    for row in rows:
+        sheet.append(row)
+    contract_file = tmp_path / "contrato_parcial.xlsx"
+    workbook.save(contract_file)
+
+    use_case = _build_generate_with_contract_use_case(app)
+    result = use_case.execute_online(contract_file=str(contract_file), collection_id=_COLLECTION_ID)
+
+    match_json = next(
+        location for location in result.artifact_locations if location.path.endswith("contract-match-report.json")
+    )
+    payload = json.loads(Path(match_json.path).read_text(encoding="utf-8"))
+    matched_entry = payload["matches"][0]
+    assert matched_entry["status"] == "MATCHED"
+    assert matched_entry["validation_issues"][0]["field"] == "Formato"
+    assert matched_entry["validation_issues"][0]["sheet"] == "Pets"
+
+
+def test_generate_with_invalid_sheet_keeps_its_diagnostic_only_in_the_general_list(
+    postman_test_server, tmp_path
+):
+    # Aba sem Método/URI nunca produz contrato utilizável — o diagnóstico
+    # correspondente nunca deve ser forçado pra dentro de matches[].
+    _configure_server(postman_test_server)
+    app = build_app(postman_test_server, tmp_path)
+    app.select_workspace.execute(workspace_id=WORKSPACE_ID)
+
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Pets"
+    for row in [["URI", "/pets/{{petId}}"], ["Método", "GET"]]:
+        sheet.append(row)
+    invalid_sheet = workbook.create_sheet("SemMetodoNemUri")
+    for row in [["Requisição(Body)"], _HEADER_ROW, ["1", "campo", "TipoInvalido", 10, "SIM"]]:
+        invalid_sheet.append(row)
+    contract_file = tmp_path / "contrato_com_aba_invalida.xlsx"
+    workbook.save(contract_file)
+
+    use_case = _build_generate_with_contract_use_case(app)
+    result = use_case.execute_online(contract_file=str(contract_file), collection_id=_COLLECTION_ID)
+
+    match_json = next(
+        location for location in result.artifact_locations if location.path.endswith("contract-match-report.json")
+    )
+    payload = json.loads(Path(match_json.path).read_text(encoding="utf-8"))
+    assert any(issue["sheet"] == "SemMetodoNemUri" for issue in payload["validation_issues"])
+    for match in payload["matches"]:
+        if match["status"] != "MATCHED":
+            continue
+        assert all(
+            issue["sheet"] != "SemMetodoNemUri" for issue in match.get("validation_issues", [])
+        )
+
+
+def test_generate_ambiguous_match_carries_different_issues_per_candidate(
+    postman_test_server, tmp_path
+):
+    _configure_server(postman_test_server)
+    app = build_app(postman_test_server, tmp_path)
+    app.select_workspace.execute(workspace_id=WORKSPACE_ID)
+
+    workbook = openpyxl.Workbook()
+    sheet_a = workbook.active
+    sheet_a.title = "PetsA"
+    for row in [
+        ["URI", "/pets/{{petId}}"],
+        ["Método", "GET"],
+        ["Resposta caso HTTP Status code 200 - OK"],
+        _HEADER_ROW,
+        ["1", "campoRuimA", "TipoInvalido", 10, "SIM"],
+    ]:
+        sheet_a.append(row)
+    sheet_b = workbook.create_sheet("PetsB")
+    for row in [
+        ["URI", "/pets/{{petId}}"],
+        ["Método", "GET"],
+        ["Resposta caso HTTP Status code 200 - OK"],
+        _HEADER_ROW,
+        ["1", "campoRuimB", "OutroTipoInvalido", 10, "SIM"],
+    ]:
+        sheet_b.append(row)
+    contract_file = tmp_path / "contrato_ambiguo.xlsx"
+    workbook.save(contract_file)
+
+    use_case = _build_generate_with_contract_use_case(app)
+    result = use_case.execute_online(contract_file=str(contract_file), collection_id=_COLLECTION_ID)
+
+    match_json = next(
+        location for location in result.artifact_locations if location.path.endswith("contract-match-report.json")
+    )
+    payload = json.loads(Path(match_json.path).read_text(encoding="utf-8"))
+    ambiguous_entry = next(m for m in payload["matches"] if m["status"] == "AMBIGUOUS")
+    by_sheet = {c["sheet"]: c["issues"] for c in ambiguous_entry["candidate_validation_issues"]}
+    assert by_sheet["PetsA"][0]["field"] == "Formato"
+    assert by_sheet["PetsA"][0]["message"] != by_sheet["PetsB"][0]["message"]
+
+
+def test_generate_not_found_never_carries_correlation_even_with_a_similarly_named_sheet(
+    postman_test_server, tmp_path
+):
+    _configure_server(postman_test_server)
+    app = build_app(postman_test_server, tmp_path)
+    app.select_workspace.execute(workspace_id=WORKSPACE_ID)
+
+    # Contrato aponta pra um endpoint inexistente na Collection (NOT_FOUND),
+    # mas o nome da aba parece muito com a Collection real — mesmo assim,
+    # nenhuma correlação deve ocorrer.
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "PetsMuitoParecidoComOReal"
+    for row in [
+        ["URI", "/nao-existe"],
+        ["Método", "GET"],
+        ["Resposta caso HTTP Status code 200 - OK"],
+        _HEADER_ROW,
+        ["1", "campoRuim", "TipoInvalido", 10, "SIM"],
+    ]:
+        sheet.append(row)
+    contract_file = tmp_path / "contrato_not_found.xlsx"
+    workbook.save(contract_file)
+
+    use_case = _build_generate_with_contract_use_case(app)
+    result = use_case.execute_online(contract_file=str(contract_file), collection_id=_COLLECTION_ID)
+
+    match_json = next(
+        location for location in result.artifact_locations if location.path.endswith("contract-match-report.json")
+    )
+    payload = json.loads(Path(match_json.path).read_text(encoding="utf-8"))
+    not_found_entry = next(m for m in payload["matches"] if m["status"] == "NOT_FOUND")
+    assert "validation_issues" not in not_found_entry
+    assert "candidate_validation_issues" not in not_found_entry
+    # O diagnóstico da aba continua disponível na lista geral.
+    assert any(issue["sheet"] == "PetsMuitoParecidoComOReal" for issue in payload["validation_issues"])

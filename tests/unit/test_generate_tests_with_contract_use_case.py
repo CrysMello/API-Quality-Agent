@@ -255,6 +255,78 @@ def test_strict_contract_match_raises_when_an_endpoint_is_ambiguous(tmp_path):
     assert "Ambiguous: 1" in str(exc_info.value)
 
 
+def _build_contract_workbook_with_invalid_field(tmp_path, *, method="GET", uri="/v2/pet/{{petId}}"):
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Planilha1"
+    rows = [
+        ["URI", uri],
+        ["Método", method],
+        ["Resposta caso HTTP Status code 200 - OK"],
+        _HEADER_ROW,
+        ["1", "dado", "Objeto", None, "SIM"],
+        ["1.1", "id", "Alfanumerico", 10, "SIM"],
+        ["1.2", "campoRuim", "TipoInvalido", 10, "SIM"],
+    ]
+    for row in rows:
+        sheet.append(row)
+    path = tmp_path / "contrato.xlsx"
+    workbook.save(path)
+    return str(path)
+
+
+# R2-09A: o ExcelContractValidator agora roda automaticamente (sem flag)
+# dentro do use case, e seus diagnósticos são correlacionados com o
+# Contract Match Report.
+
+
+def test_validator_runs_automatically_and_correlates_issues_with_a_matched_entry(tmp_path):
+    # Contrato parcialmente inválido (campo com tipo desconhecido) ainda
+    # entra no catálogo e ainda casa com a request real — MATCHED e
+    # validation_issues coexistem (comportamento real do parser/validator,
+    # não inventado).
+    contract_path = _build_contract_workbook_with_invalid_field(tmp_path)
+    document = _parse_document(
+        [{"name": "Buscar pet", "id": "r1", "request": {"method": "GET", "url": "https://x/v2/pet/:petId"}}]
+    )
+
+    use_case = _build_use_case(tmp_path)
+    result = use_case.execute_offline(contract_file=contract_path, document=document)
+
+    json_location = next(
+        loc for loc in result.artifact_locations if loc.path.endswith("contract-match-report.json")
+    )
+    payload = json.loads(Path(json_location.path).read_text(encoding="utf-8"))
+    matched = next(m for m in payload["matches"] if m["status"] == "MATCHED")
+    assert matched["validation_issues"][0]["field"] == "Formato"
+    assert matched["validation_issues"][0]["sheet"] == "Planilha1"
+
+
+def test_validator_issue_on_sheet_without_usable_contract_stays_in_the_general_list(tmp_path):
+    workbook_path = tmp_path / "contrato.xlsx"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "SemMetodoNemUri"
+    for row in [["Requisição(Body)"], _HEADER_ROW, ["1", "campo", "TipoInvalido", 10, "SIM"]]:
+        sheet.append(row)
+    workbook.save(workbook_path)
+
+    document = _parse_document(
+        [{"name": "Buscar pet", "id": "r1", "request": {"method": "GET", "url": "https://x/v2/pet/1"}}]
+    )
+
+    use_case = _build_use_case(tmp_path)
+    result = use_case.execute_offline(contract_file=str(workbook_path), document=document)
+
+    json_location = next(
+        loc for loc in result.artifact_locations if loc.path.endswith("contract-match-report.json")
+    )
+    payload = json.loads(Path(json_location.path).read_text(encoding="utf-8"))
+    assert payload["validation_issues"][0]["sheet"] == "SemMetodoNemUri"
+    for match in payload["matches"]:
+        assert "validation_issues" not in match
+
+
 def test_default_mode_does_not_raise_even_with_unmatched_endpoints(tmp_path):
     # strict_contract_match ausente (default False): comportamento atual
     # preservado — endpoint sem contrato pareado nunca é motivo de falha.

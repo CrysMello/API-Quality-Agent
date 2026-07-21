@@ -39,7 +39,7 @@ from api_quality_agent.domain.services import (
     TestStrategyEngine,
 )
 from api_quality_agent.generators import PostmanTestGenerator
-from api_quality_agent.parsers import ExcelContractParser
+from api_quality_agent.parsers import ExcelContractParser, ExcelContractValidator, RawContractRow
 from api_quality_agent.ports.outbound import ArtifactRepository, CollectionRepository
 
 # R2-07/R2-09: compõe tudo que já existe (parser/matcher/providers das
@@ -96,6 +96,7 @@ class GenerateTestsWithContractUseCase:
         get_current_workspace_use_case: GetCurrentWorkspaceUseCase | None = None,
         resolve_collection_use_case: ResolveCollectionUseCase | None = None,
         collection_repository: CollectionRepository | None = None,
+        excel_contract_validator: ExcelContractValidator | None = None,
         id_factory: Callable[[], str] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
@@ -110,6 +111,10 @@ class GenerateTestsWithContractUseCase:
         self._get_current_workspace_use_case = get_current_workspace_use_case
         self._resolve_collection_use_case = resolve_collection_use_case
         self._collection_repository = collection_repository
+        # R2-09A: sempre disponível — se nenhum for injetado, constrói um
+        # padrão (sem dependências próprias). A validação passa a rodar
+        # automaticamente sempre que --contract-file é usado, sem flag nova.
+        self._excel_contract_validator = excel_contract_validator or ExcelContractValidator()
         self._id_factory = id_factory
         self._clock = clock
 
@@ -132,7 +137,8 @@ class GenerateTestsWithContractUseCase:
                 "um documento ou monte-o com as dependências de Workspace/Postman."
             )
 
-        catalog = self._excel_contract_parser.parse(contract_file).catalog
+        parse_result = self._excel_contract_parser.parse(contract_file)
+        catalog = parse_result.catalog
         normalizer = CanonicalEndpointNormalizer(collection_path_prefix=collection_path_prefix)
         matcher = ContractEndpointMatcher(normalizer)
 
@@ -152,6 +158,7 @@ class GenerateTestsWithContractUseCase:
         report_outcome = self._save_match_report(
             contract_file,
             catalog,
+            parse_result.raw_rows,
             matcher,
             normalizer,
             result,
@@ -172,7 +179,8 @@ class GenerateTestsWithContractUseCase:
         collection_path_prefix: str | None = None,
         strict_contract_match: bool = False,
     ) -> CollectionGenerationResult:
-        catalog = self._excel_contract_parser.parse(contract_file).catalog
+        parse_result = self._excel_contract_parser.parse(contract_file)
+        catalog = parse_result.catalog
         normalizer = CanonicalEndpointNormalizer(collection_path_prefix=collection_path_prefix)
         matcher = ContractEndpointMatcher(normalizer)
 
@@ -187,6 +195,7 @@ class GenerateTestsWithContractUseCase:
         report_outcome = self._save_match_report(
             contract_file,
             catalog,
+            parse_result.raw_rows,
             matcher,
             normalizer,
             result,
@@ -234,6 +243,7 @@ class GenerateTestsWithContractUseCase:
         self,
         contract_file: str,
         catalog: DeclaredContractCatalog,
+        raw_rows: tuple[RawContractRow, ...],
         matcher: ContractEndpointMatcher,
         normalizer: CanonicalEndpointNormalizer,
         result: CollectionGenerationResult,
@@ -270,7 +280,8 @@ class GenerateTestsWithContractUseCase:
                 continue  # request sem URL/método utilizável: não entra no relatório
 
         match_results = matcher.match_all(tuple(endpoints), catalog)
-        report = build_contract_match_report(contract_file, match_results)
+        validation_issues = self._excel_contract_validator.validate(raw_rows, catalog)
+        report = build_contract_match_report(contract_file, match_results, validation_issues)
 
         json_artifact = GeneratedArtifact(
             category="contracts",

@@ -415,3 +415,67 @@ def test_generate_rejects_strict_contract_match_without_contract_file(offline_en
     )
 
     assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+
+
+# R2-09A: ExcelContractValidator roda automaticamente (sem flag) e seus
+# diagnósticos são persistidos no Contract Match Report — confirmando que
+# isso não regride --strict-contract-match nem --collection-path-prefix.
+
+
+def _write_contract_file_with_invalid_field(path, *, uri="/v2/pet/{{petId}}"):
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "Planilha1"
+    rows = [
+        ["URI", uri],
+        ["Método", "GET"],
+        ["Resposta caso HTTP Status code 200 - OK"],
+        _HEADER_ROW,
+        ["1", "dado", "Objeto", None, "SIM"],
+        ["1.1", "id", "Alfanumerico", 10, "SIM"],
+        ["1.2", "campoRuim", "TipoInvalido", 10, "SIM"],
+    ]
+    for row in rows:
+        sheet.append(row)
+    file_path = path / "contrato.xlsx"
+    workbook.save(file_path)
+    return file_path
+
+
+def test_generate_persists_validation_issues_correlated_with_a_matched_entry(offline_env):
+    collection_path = _write_collection_file(offline_env)
+    contract_path = _write_contract_file_with_invalid_field(offline_env)
+
+    exit_code = main(
+        ["generate", "--file", str(collection_path), "--contract-file", str(contract_path), "--yes"]
+    )
+
+    assert exit_code == SUCCESS
+    report_dir = offline_env / "artifacts" / "local"
+    payload = json.loads(next(report_dir.rglob("contract-match-report.json")).read_text(encoding="utf-8"))
+    matched = next(m for m in payload["matches"] if m["status"] == "MATCHED")
+    assert matched["validation_issues"][0]["field"] == "Formato"
+
+
+def test_generate_strict_contract_match_ignores_validation_issues_when_everything_matches(
+    offline_env, capsys
+):
+    # Diagnósticos de validação nunca devem alterar o exit code do modo
+    # estrito — só not_found/ambiguous fazem isso.
+    collection_path = _write_collection_file(offline_env)
+    contract_path = _write_contract_file_with_invalid_field(offline_env)
+
+    exit_code = main(
+        [
+            "generate",
+            "--file",
+            str(collection_path),
+            "--contract-file",
+            str(contract_path),
+            "--strict-contract-match",
+            "--yes",
+        ]
+    )
+
+    assert exit_code == SUCCESS
+    assert "Processo concluído com sucesso" in capsys.readouterr().out
