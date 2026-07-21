@@ -68,9 +68,32 @@ dependência de desenvolvimento (stubs pro `mypy`).
     confirmação de que a seção 400 nunca vaza pro schema, aba sem
     metadados, múltiplas abas, array com um único filho).
   - `mypy src`: limpo (202 arquivos). `pytest`: 913 passed, 1 skipped.
-- [ ] **Fase 2 (restante)** — `ExcelContractValidator` (consistência:
-      sequencial duplicado, filho sem pai, tipo desconhecido, regra de aba
-      candidata formal com `INVALID_CONTRACT`).
+- [x] **Fase 2 (restante) — `ExcelContractValidator`** (R2-03, concluída)
+  - **Evolução de interface (não é débito técnico)**: `ExcelContractParser.parse()`
+    passou a devolver `ExcelParseResult` (`raw_rows` + `catalog`) em vez de só
+    o catálogo. Decisão consciente: como nada fora dos próprios testes da
+    R2-02 consumia `parse()` ainda, corrigir a interface agora (em vez de
+    manter dois métodos por "compatibilidade" com um consumidor que não
+    existe) evita duplicação de API. Testes da R2-02 atualizados pra usar
+    `result.catalog`.
+  - `RawContractRow` (`src/api_quality_agent/parsers/excel_contract_parser.py`):
+    preserva toda linha de dado observada (mesmo com problema — sequencial
+    duplicado, órfã, tipo desconhecido), com `sheet`/`section`/`row_number`
+    pra rastreabilidade (ASR-06 do SAD).
+  - Normalização compartilhada extraída pra
+    `parsers/excel_contract_normalization.py` (usada por parser e validador,
+    sem duplicar lógica).
+  - `ExcelContractValidator.validate(raw_rows, catalog) -> tuple[ContractValidationIssue, ...]`
+    (`parsers/excel_contract_validator.py`) — não recebe nem importa nada de
+    Collection/Postman. Verifica: sequencial inválido/duplicado; pai
+    inexistente (filho órfão); tipo desconhecido; array sem filhos
+    declarados; path param marcado como não-obrigatório; outras seções de
+    resposta reconhecidas e ignoradas (transparência da decisão R2-00B);
+    endpoints duplicados (mesmo método+path) no catálogo.
+  - Testes: `tests/unit/test_excel_contract_validator.py` (10 testes) +
+    1 teste novo em `test_excel_contract_parser.py` (seção 400 aparece nas
+    `raw_rows`).
+  - `mypy src`: limpo (204 arquivos). `pytest`: 924 passed, 1 skipped.
 - [ ] **Gate (adendo v1.1, seção 5)** — validação com Collection real antes
       da Fase 3.
 - [ ] **Fase 3** — `CanonicalEndpointNormalizer` + `InfrastructureVariableResolver`

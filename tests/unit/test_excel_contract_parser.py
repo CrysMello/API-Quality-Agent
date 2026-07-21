@@ -67,7 +67,7 @@ def _find(properties: tuple[DeclaredSchema, ...], name: str) -> DeclaredSchema:
 def test_parses_metadata_method_and_uri(tmp_path):
     path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
 
-    catalog = ExcelContractParser().parse(path)
+    catalog = ExcelContractParser().parse(path).catalog
 
     assert len(catalog.contracts) == 1
     endpoint = catalog.contracts[0]
@@ -79,7 +79,7 @@ def test_parses_metadata_method_and_uri(tmp_path):
 def test_source_file_is_recorded(tmp_path):
     path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
 
-    catalog = ExcelContractParser().parse(path)
+    catalog = ExcelContractParser().parse(path).catalog
 
     assert catalog.source_file == str(path)
 
@@ -87,7 +87,7 @@ def test_source_file_is_recorded(tmp_path):
 def test_header_becomes_a_required_string_parameter(tmp_path):
     path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
 
-    endpoint = ExcelContractParser().parse(path).contracts[0]
+    endpoint = ExcelContractParser().parse(path).catalog.contracts[0]
 
     assert len(endpoint.request.headers) == 1
     header = endpoint.request.headers[0]
@@ -100,7 +100,7 @@ def test_header_becomes_a_required_string_parameter(tmp_path):
 def test_path_param_becomes_a_required_string_parameter(tmp_path):
     path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
 
-    endpoint = ExcelContractParser().parse(path).contracts[0]
+    endpoint = ExcelContractParser().parse(path).catalog.contracts[0]
 
     assert len(endpoint.request.path_parameters) == 1
     path_parameter = endpoint.request.path_parameters[0]
@@ -112,7 +112,7 @@ def test_path_param_becomes_a_required_string_parameter(tmp_path):
 def test_empty_query_param_section_produces_no_parameters(tmp_path):
     path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
 
-    endpoint = ExcelContractParser().parse(path).contracts[0]
+    endpoint = ExcelContractParser().parse(path).catalog.contracts[0]
 
     assert endpoint.request.query_parameters == ()
 
@@ -120,7 +120,7 @@ def test_empty_query_param_section_produces_no_parameters(tmp_path):
 def test_body_schema_has_optional_and_required_top_level_fields(tmp_path):
     path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
 
-    endpoint = ExcelContractParser().parse(path).contracts[0]
+    endpoint = ExcelContractParser().parse(path).catalog.contracts[0]
 
     body = endpoint.request.body_schema
     assert body is not None
@@ -135,7 +135,7 @@ def test_body_schema_has_optional_and_required_top_level_fields(tmp_path):
 def test_response_200_schema_builds_the_full_nested_tree(tmp_path):
     path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
 
-    endpoint = ExcelContractParser().parse(path).contracts[0]
+    endpoint = ExcelContractParser().parse(path).catalog.contracts[0]
 
     response_schema = endpoint.response.schema
     assert response_schema is not None
@@ -158,7 +158,7 @@ def test_response_200_schema_builds_the_full_nested_tree(tmp_path):
 def test_response_400_section_is_recognized_but_never_used(tmp_path):
     path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
 
-    endpoint = ExcelContractParser().parse(path).contracts[0]
+    endpoint = ExcelContractParser().parse(path).catalog.contracts[0]
 
     # Escopo R2-00B: só a resposta de sucesso (200) vira schema. A árvore de
     # "dado" (200) não deve ter nenhum resquício de "erros" (400).
@@ -166,6 +166,15 @@ def test_response_400_section_is_recognized_but_never_used(tmp_path):
     assert response_schema is not None
     names = {prop.name for prop in response_schema.properties}
     assert names == {"dado"}
+
+
+def test_response_400_rows_still_appear_in_raw_rows(tmp_path):
+    path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
+
+    result = ExcelContractParser().parse(path)
+
+    sections_present = {row.section for row in result.raw_rows}
+    assert "response_400" in sections_present
 
 
 def test_sheet_without_uri_or_metodo_produces_no_contract(tmp_path):
@@ -176,7 +185,7 @@ def test_sheet_without_uri_or_metodo_produces_no_contract(tmp_path):
     ]
     path = _build_workbook(tmp_path, sheets={"SemMetadados": rows_without_metadata})
 
-    catalog = ExcelContractParser().parse(path)
+    catalog = ExcelContractParser().parse(path).catalog
 
     assert catalog.contracts == ()
 
@@ -193,7 +202,7 @@ def test_multiple_sheets_each_become_a_separate_contract(tmp_path):
         sheets={"Planilha1": _MODEL_SHEET_ROWS, "Planilha2": other_sheet_rows},
     )
 
-    catalog = ExcelContractParser().parse(path)
+    catalog = ExcelContractParser().parse(path).catalog
 
     assert len(catalog.contracts) == 2
     methods = {contract.method for contract in catalog.contracts}
@@ -211,7 +220,7 @@ def test_array_with_a_single_child_still_becomes_an_object_item_schema(tmp_path)
     ]
     path = _build_workbook(tmp_path, sheets={"Planilha1": rows})
 
-    endpoint = ExcelContractParser().parse(path).contracts[0]
+    endpoint = ExcelContractParser().parse(path).catalog.contracts[0]
 
     itens = _find(endpoint.response.schema.properties, "itens")  # type: ignore[union-attr]
     assert itens.type == "array"

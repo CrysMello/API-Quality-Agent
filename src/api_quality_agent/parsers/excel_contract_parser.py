@@ -1,5 +1,5 @@
 import re
-import unicodedata
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -15,29 +15,21 @@ from api_quality_agent.domain.models import (
     DeclaredSchema,
     ParameterLocation,
 )
+from api_quality_agent.parsers.excel_contract_normalization import (
+    map_declared_type,
+    normalize_label,
+    normalize_sequencial,
+)
 
-# R2-02: só o caminho Excel -> ExcelContractParser -> DeclaredContractCatalog.
-# Sem validação formal de consistência (ExcelContractValidator), sem matcher,
-# sem CLI — uma aba sem URI/Método utilizável simplesmente não vira contrato,
-# em vez de levantar um erro estruturado (isso fica pra uma fase posterior).
+# R2-02/R2-03: Excel -> ExcelContractParser -> ExcelParseResult
+# (raw_rows + DeclaredContractCatalog). Sem validação formal de consistência
+# (isso é responsabilidade do ExcelContractValidator, que consome as
+# raw_rows), sem matcher, sem CLI.
 #
 # Decisão de escopo R2-00B: só a seção "Resposta ... Status code 200 ..." é
 # convertida em schema. Outras seções de resposta (400, 404, 500 etc.) são
-# reconhecidas (pra não quebrar a leitura da aba), mas descartadas.
-
-_TYPE_MAP: dict[str, str] = {
-    "alfanumerico": "string",
-    "texto": "string",
-    "numerico": "number",
-    "inteiro": "integer",
-    "booleano": "boolean",
-    "data": "string",
-    "datahora": "string",
-    "data e hora": "string",
-    "objeto": "object",
-    "arraylist": "array",
-    "lista": "array",
-}
+# reconhecidas (pra não quebrar a leitura da aba), mas descartadas do
+# catálogo — permanecem apenas nas raw_rows, à disposição do validador.
 
 _SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
     "header": re.compile(r"requisicao\s*\(\s*header\s*\)"),
@@ -47,36 +39,30 @@ _SECTION_PATTERNS: dict[str, re.Pattern[str]] = {
 }
 _RESPONSE_SECTION_PATTERN = re.compile(r"resposta.*status\s*code\s*(\d+)")
 
-_SuccessStatusCode = "200"
+_SUCCESS_STATUS_CODE = "200"
 
 
-def _normalize_label(value: Any) -> str:
-    if value is None:
-        return ""
-    text = str(value).strip().casefold()
-    without_accents = "".join(
-        char for char in unicodedata.normalize("NFKD", text) if not unicodedata.combining(char)
-    )
-    return re.sub(r"\s+", " ", without_accents).strip()
+@dataclass(frozen=True)
+class RawContractRow:
+    # Uma linha de dado observada numa seção da planilha, preservada sem
+    # filtragem (mesmo linhas com sequencial duplicado, órfão, ou tipo
+    # desconhecido) — é sobre isso que o ExcelContractValidator opera.
+    sheet: str
+    section: str
+    row_number: int
+    sequencial_raw: str
+    name_raw: str | None
+    formato_raw: str | None
+    obrigatoriedade_raw: str | None
 
 
-def _map_type(raw_formato: Any) -> str | None:
-    return _TYPE_MAP.get(_normalize_label(raw_formato))
+@dataclass(frozen=True)
+class ExcelParseResult:
+    raw_rows: tuple[RawContractRow, ...]
+    catalog: DeclaredContractCatalog
 
 
-def _normalize_sequencial(value: Any) -> tuple[int, ...] | None:
-    if isinstance(value, (int, float)):
-        return (int(value),)
-    text = str(value).strip()
-    if not text:
-        return None
-    try:
-        return tuple(int(part) for part in text.split("."))
-    except ValueError:
-        return None
-
-
-class _Row:
+class _NormalizedRow:
     __slots__ = ("sequencial", "name", "type", "required")
 
     def __init__(self, sequencial: tuple[int, ...], name: str, type_: str, required: bool) -> None:
@@ -87,52 +73,62 @@ class _Row:
 
 
 class ExcelContractParser:
-    def parse(self, file_path: str | Path) -> DeclaredContractCatalog:
+    def parse(self, file_path: str | Path) -> ExcelParseResult:
         path = Path(file_path)
         workbook = openpyxl.load_workbook(path, data_only=True, read_only=True)
         try:
-            contracts = tuple(
-                contract
-                for worksheet in workbook.worksheets
-                if (contract := self._parse_sheet(worksheet)) is not None
-            )
+            all_raw_rows: list[RawContractRow] = []
+            contracts: list[DeclaredEndpointContract] = []
+            for worksheet in workbook.worksheets:
+                sheet_raw_rows, contract = self._parse_sheet(worksheet)
+                all_raw_rows.extend(sheet_raw_rows)
+                if contract is not None:
+                    contracts.append(contract)
         finally:
             workbook.close()
-        return DeclaredContractCatalog(source_file=str(path), contracts=contracts)
 
-    def _parse_sheet(self, worksheet: Worksheet) -> DeclaredEndpointContract | None:
+        catalog = DeclaredContractCatalog(source_file=str(path), contracts=tuple(contracts))
+        return ExcelParseResult(raw_rows=tuple(all_raw_rows), catalog=catalog)
+
+    def _parse_sheet(
+        self, worksheet: Worksheet
+    ) -> tuple[list[RawContractRow], DeclaredEndpointContract | None]:
         rows = list(worksheet.iter_rows(values_only=True))
 
         method, uri = self._find_metadata(rows)
-        if not method or not uri:
-            return None
+        sections = self._split_sections(worksheet.title, rows)
+        raw_rows = [row for rows_in_section in sections.values() for row in rows_in_section]
 
-        sections = self._split_sections(rows)
+        if not method or not uri:
+            return raw_rows, None
+
+        normalized = {key: self._normalize_section(rows_in_section) for key, rows_in_section in sections.items()}
 
         request = DeclaredRequestContract(
-            headers=self._build_parameters(sections.get("header", []), ParameterLocation.HEADER),
-            path_parameters=self._build_parameters(sections.get("path", []), ParameterLocation.PATH),
-            query_parameters=self._build_parameters(sections.get("query", []), ParameterLocation.QUERY),
-            body_schema=self._build_root_schema(sections.get("body", [])),
+            headers=self._build_parameters(normalized.get("header", []), ParameterLocation.HEADER),
+            path_parameters=self._build_parameters(normalized.get("path", []), ParameterLocation.PATH),
+            query_parameters=self._build_parameters(normalized.get("query", []), ParameterLocation.QUERY),
+            body_schema=self._build_root_schema(normalized.get("body", [])),
         )
         response = DeclaredResponseContract(
-            schema=self._build_root_schema(sections.get(f"response_{_SuccessStatusCode}", []))
+            schema=self._build_root_schema(normalized.get(f"response_{_SUCCESS_STATUS_CODE}", []))
         )
 
-        return DeclaredEndpointContract(
+        contract = DeclaredEndpointContract(
             method=method,
             path=uri,
             request=request,
             response=response,
             source_sheet=worksheet.title,
         )
+        return raw_rows, contract
 
     def _find_metadata(self, rows: list[tuple[Any, ...]]) -> tuple[str | None, str | None]:
         method: str | None = None
         uri: str | None = None
         for row in rows:
             for index, cell in enumerate(row):
-                label = _normalize_label(cell)
+                label = normalize_label(cell)
                 if label == "uri" and uri is None:
                     uri = self._first_non_empty_after(row, index)
                 elif label == "metodo" and method is None:
@@ -148,13 +144,15 @@ class ExcelContractParser:
                 return str(value).strip()
         return None
 
-    def _split_sections(self, rows: list[tuple[Any, ...]]) -> dict[str, list[_Row]]:
-        sections: dict[str, list[_Row]] = {}
+    def _split_sections(
+        self, sheet_title: str, rows: list[tuple[Any, ...]]
+    ) -> dict[str, list[RawContractRow]]:
+        sections: dict[str, list[RawContractRow]] = {}
         current_key: str | None = None
         column_map: dict[str, int] | None = None
 
-        for row in rows:
-            joined = " ".join(_normalize_label(cell) for cell in row if cell is not None).strip()
+        for row_number, row in enumerate(rows, start=1):
+            joined = " ".join(normalize_label(cell) for cell in row if cell is not None).strip()
             if not joined:
                 continue
 
@@ -174,9 +172,9 @@ class ExcelContractParser:
                 continue
 
             if column_map is not None:
-                parsed_row = self._parse_data_row(row, column_map)
-                if parsed_row is not None:
-                    sections[current_key].append(parsed_row)
+                raw_row = self._read_raw_row(sheet_title, current_key, row_number, row, column_map)
+                if raw_row is not None:
+                    sections[current_key].append(raw_row)
 
         return sections
 
@@ -194,7 +192,7 @@ class ExcelContractParser:
     def _match_header_row(row: tuple[Any, ...]) -> dict[str, int] | None:
         mapping: dict[str, int] = {}
         for index, cell in enumerate(row):
-            label = _normalize_label(cell)
+            label = normalize_label(cell)
             if label == "sequencial":
                 mapping["sequencial"] = index
             elif label == "nome do campo":
@@ -210,26 +208,51 @@ class ExcelContractParser:
         return None
 
     @staticmethod
-    def _parse_data_row(row: tuple[Any, ...], column_map: dict[str, int]) -> _Row | None:
+    def _read_raw_row(
+        sheet: str, section: str, row_number: int, row: tuple[Any, ...], column_map: dict[str, int]
+    ) -> RawContractRow | None:
         def _cell(key: str) -> Any:
             index = column_map[key]
             return row[index] if index < len(row) else None
 
-        sequencial = _normalize_sequencial(_cell("sequencial"))
-        name_raw = _cell("nome")
-        schema_type = _map_type(_cell("formato"))
+        sequencial_cell = _cell("sequencial")
+        name_cell = _cell("nome")
+        formato_cell = _cell("formato")
+        obrigatoriedade_cell = _cell("obrigatoriedade")
 
-        if sequencial is None or name_raw is None or schema_type is None:
+        if all(
+            cell is None or not str(cell).strip()
+            for cell in (sequencial_cell, name_cell, formato_cell, obrigatoriedade_cell)
+        ):
             return None
 
-        name = str(name_raw).strip()
-        if not name:
-            return None
+        return RawContractRow(
+            sheet=sheet,
+            section=section,
+            row_number=row_number,
+            sequencial_raw=str(sequencial_cell).strip() if sequencial_cell is not None else "",
+            name_raw=str(name_cell).strip() if name_cell is not None else None,
+            formato_raw=str(formato_cell).strip() if formato_cell is not None else None,
+            obrigatoriedade_raw=(
+                str(obrigatoriedade_cell).strip() if obrigatoriedade_cell is not None else None
+            ),
+        )
 
-        required = _normalize_label(_cell("obrigatoriedade")) == "sim"
-        return _Row(sequencial=sequencial, name=name, type_=schema_type, required=required)
+    @staticmethod
+    def _normalize_section(raw_rows: list[RawContractRow]) -> list[_NormalizedRow]:
+        normalized: list[_NormalizedRow] = []
+        for raw in raw_rows:
+            sequencial = normalize_sequencial(raw.sequencial_raw)
+            schema_type = map_declared_type(raw.formato_raw)
+            if sequencial is None or not raw.name_raw or schema_type is None:
+                continue
+            required = normalize_label(raw.obrigatoriedade_raw) == "sim"
+            normalized.append(
+                _NormalizedRow(sequencial=sequencial, name=raw.name_raw, type_=schema_type, required=required)
+            )
+        return normalized
 
-    def _build_root_schema(self, records: list[_Row]) -> DeclaredSchema | None:
+    def _build_root_schema(self, records: list[_NormalizedRow]) -> DeclaredSchema | None:
         if not records:
             return None
         by_seq = {record.sequencial: record for record in records}
@@ -239,7 +262,9 @@ class ExcelContractParser:
         properties = tuple(self._build_node(by_seq, seq) for seq in roots)
         return DeclaredSchema(type="object", required=True, properties=properties)
 
-    def _build_node(self, by_seq: dict[tuple[int, ...], _Row], seq: tuple[int, ...]) -> DeclaredSchema:
+    def _build_node(
+        self, by_seq: dict[tuple[int, ...], _NormalizedRow], seq: tuple[int, ...]
+    ) -> DeclaredSchema:
         record = by_seq[seq]
         children = sorted(
             candidate
@@ -263,7 +288,7 @@ class ExcelContractParser:
         return DeclaredSchema(type=record.type, required=record.required, name=record.name)
 
     def _build_parameters(
-        self, records: list[_Row], location: ParameterLocation
+        self, records: list[_NormalizedRow], location: ParameterLocation
     ) -> tuple[DeclaredParameter, ...]:
         if not records:
             return ()
