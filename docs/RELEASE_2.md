@@ -94,8 +94,8 @@ dependência de desenvolvimento (stubs pro `mypy`).
     1 teste novo em `test_excel_contract_parser.py` (seção 400 aparece nas
     `raw_rows`).
   - `mypy src`: limpo (204 arquivos). `pytest`: 924 passed, 1 skipped.
-- [ ] **Gate (adendo v1.1, seção 5)** — validação com Collection real antes
-      da Fase 3.
+- [x] **Gate (adendo v1.1, seção 5)** — validação com Collection real antes
+      da Fase 3. Cumprido na R2-04A (Swagger Petstore, ver decisão abaixo).
 - [x] **Fase 3 (parcial) — `CanonicalEndpointNormalizer` + `ContractEndpointMatcher`**
       (R2-04, concluída; gate R2-04A validado com a Collection real Swagger
       Petstore — ver decisão abaixo)
@@ -317,11 +317,26 @@ dependência de desenvolvimento (stubs pro `mypy`).
     o do scratch usado no teste, então isso não deve afetar o uso normal —
     mas é um limite real do Windows a ter em mente se os artefatos forem
     salvos em uma árvore de diretórios muito profunda.
-- [ ] **Fase 4** — characterization tests do `AgentOrchestrator` atual,
-      depois `SchemaProvider` (porta) + `InferenceSchemaProvider`/
-      `DeclaredSchemaProvider` + mudança aditiva no `AgentOrchestrator`.
-- [ ] **Fase 5** — `GenerateTestsWithContractUseCase` + `ContractMatchReportWriter`.
-- [ ] **Fase 6** — CLI: `--contract-file` e `--strict-contract-match` em
-      `generate` (online e `--file`).
-- [ ] **Fase 7** — integração ponta a ponta, regressão completa,
-      README/GUIA_DE_USO, limitações do MVP documentadas.
+## O que genuinamente ainda falta
+
+- **`InfrastructureVariableResolver`** — resolução de variáveis de
+  infraestrutura (`{{baseUrl}}` etc.) e prefixo fixo de path via
+  `--collection-path-prefix`. O gate R2-04A concluiu que não é
+  estritamente necessário pro caso testado (canonizar a partir de
+  `url.path` já exclui `{{baseUrl}}` de graça), mas prefixo fixo continua
+  como risco residual não exercitado — nenhuma Collection real com esse
+  padrão foi testada ainda.
+- **`--strict-contract-match`** — hoje endpoint sem match ou ambíguo
+  sempre cai silenciosamente pra inferência (via `FallbackSchemaProvider`);
+  não existe um modo que transforme isso em falha (útil pra CI).
+- **Correlação `INVALID_CONTRACT`** — diagnósticos do `ExcelContractValidator`
+  (por linha/campo) não aparecem no Contract Match Report (por endpoint).
+- **Exit code impreciso** — arquivo de contrato ausente/corrompido mapeia
+  pro código 8 (inesperado) em vez de 2 (entrada inválida).
+- **README/GUIA_DE_USO.md nunca foram atualizados** pra documentar
+  `generate --contract-file` — hoje só existe documentação técnica interna
+  (este arquivo). Do ponto de vista de quem usa a ferramenta (não lê este
+  documento), a funcionalidade inteira está invisível.
+- **Nenhum cenário novo em `tests/acceptance/`** exercitando a jornada
+  completa de contrato (hoje só há cobertura unitária + testes manuais
+  pontuais, sem um cenário formal ao lado dos 20 já existentes).
