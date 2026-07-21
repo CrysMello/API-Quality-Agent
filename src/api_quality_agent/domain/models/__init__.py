@@ -16,11 +16,13 @@ from api_quality_agent.domain.models.auth_type import AuthType
 from api_quality_agent.domain.models.backup_metadata import BackupMetadata
 from api_quality_agent.domain.models.backup_policy import BackupPolicy
 from api_quality_agent.domain.models.body_mode import BodyMode
+from api_quality_agent.domain.models.canonical_endpoint import CanonicalEndpoint
 from api_quality_agent.domain.models.change_severity import ChangeSeverity
 from api_quality_agent.domain.models.collection_ref import CollectionRef
 from api_quality_agent.domain.models.collection_update_receipt import CollectionUpdateReceipt
 from api_quality_agent.domain.models.contract_change import ContractChange
 from api_quality_agent.domain.models.contract_change_type import ContractChangeType
+from api_quality_agent.domain.models.contract_match_result import ContractMatchResult
 from api_quality_agent.domain.models.contract_snapshot import ContractSnapshot
 from api_quality_agent.domain.models.declared_contract_catalog import DeclaredContractCatalog
 from api_quality_agent.domain.models.declared_endpoint_contract import DeclaredEndpointContract
@@ -48,6 +50,7 @@ from api_quality_agent.domain.models.infrastructure_failure import Infrastructur
 from api_quality_agent.domain.models.infrastructure_failure_type import InfrastructureFailureType
 from api_quality_agent.domain.models.input_origin import InputOrigin
 from api_quality_agent.domain.models.managed_block import ManagedBlock
+from api_quality_agent.domain.models.match_status import MatchStatus
 from api_quality_agent.domain.models.media_type_definition import MediaTypeDefinition
 from api_quality_agent.domain.models.merge_action import MergeAction
 from api_quality_agent.domain.models.merge_result import MergeResult
@@ -110,6 +113,7 @@ __all__ = [
     "BackupMetadata",
     "BackupPolicy",
     "BodyMode",
+    "CanonicalEndpoint",
     "ChangeSeverity",
     "CollectionEvent",
     "CollectionExample",
@@ -120,6 +124,7 @@ __all__ = [
     "CollectionUpdateReceipt",
     "ContractChange",
     "ContractChangeType",
+    "ContractMatchResult",
     "ContractSnapshot",
     "DeclaredContractCatalog",
     "DeclaredEndpointContract",
@@ -147,6 +152,7 @@ __all__ = [
     "InfrastructureFailureType",
     "InputOrigin",
     "ManagedBlock",
+    "MatchStatus",
     "MediaTypeDefinition",
     "MergeAction",
     "MergeResult",

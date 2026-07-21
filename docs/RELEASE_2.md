@@ -96,8 +96,54 @@ dependência de desenvolvimento (stubs pro `mypy`).
   - `mypy src`: limpo (204 arquivos). `pytest`: 924 passed, 1 skipped.
 - [ ] **Gate (adendo v1.1, seção 5)** — validação com Collection real antes
       da Fase 3.
-- [ ] **Fase 3** — `CanonicalEndpointNormalizer` + `InfrastructureVariableResolver`
-      + `ContractEndpointMatcher`.
+- [x] **Fase 3 (parcial) — `CanonicalEndpointNormalizer` + `ContractEndpointMatcher`**
+      (R2-04, concluída; gate R2-04A validado com a Collection real Swagger
+      Petstore — ver decisão abaixo)
+  - **Gate R2-04A**: analisada uma Collection Postman real (5 endpoints,
+    variável `{{baseUrl}}` em todas as requests, parâmetro `{{petId}}` em
+    duas). Veredito: **ARQUITETURA VALIDADA**, com um refinamento de
+    implementação (não uma mudança de arquitetura): canonizar sempre a
+    partir de `url.path` (array), nunca de `url.raw` — isso exclui
+    `{{baseUrl}}` da comparação de graça, porque ele vive em `url.host`,
+    nunca em `url.path`. Risco residual registrado e **não tratado por
+    decisão**: remoção de prefixo fixo de path (`/api`, `/v1` etc.) não foi
+    exercitada pelo exemplo real — nenhuma heurística de prefixo foi
+    implementada.
+  - `domain/models/canonical_endpoint.py` (`CanonicalEndpoint`),
+    `domain/models/match_status.py` (`MatchStatus`: MATCHED/NOT_FOUND/
+    AMBIGUOUS), `domain/models/contract_match_result.py` (`ContractMatchResult`).
+  - `domain/services/canonical_endpoint_normalizer.py`
+    (`CanonicalEndpointNormalizer`): prioriza `url.path`; cai pra `url.raw`
+    só se `url.path` ausente/vazio (extraindo o path e descartando protocolo/
+    domínio/host/query); normaliza `{id}`/`:id`/`{{id}}` → `{param}` (nome
+    do parâmetro não importa, só a posição); nunca resolve variável de
+    infraestrutura nem acessa Excel. Reaproveita
+    `InvalidPostmanCollectionError` já existente pra "Collection inválida"
+    (não criou exceção nova).
+  - `domain/services/contract_endpoint_matcher.py` (`ContractEndpointMatcher`):
+    só compara `CanonicalEndpoint` (método+path) já prontos contra o
+    catálogo — nunca interpreta URL, nunca analisa query string, nunca
+    acessa Excel. `MATCHED`/`NOT_FOUND`/`AMBIGUOUS` (candidatos ambíguos
+    nunca escolhidos automaticamente).
+  - Testes: `tests/unit/test_canonical_endpoint_normalizer.py` (15 —
+    incluindo os 5 exemplos de URLs equivalentes do prompt, todos produzindo
+    `/users/{param}`) e `tests/unit/test_contract_endpoint_matcher.py`
+    (7 — match, not-found, método diferencia path igual, ambíguo nunca
+    escolhido, `match_all`, garantia de escopo via introspecção de
+    assinatura).
+  - `mypy src`: limpo (209 arquivos). `pytest`: 946 passed, 1 skipped.
+  - **Ruff — não aplicável ao estado atual do projeto** (decisão registrada
+    após confirmação explícita): Ruff não foi executado porque não está
+    instalado nem configurado no projeto; essa ausência já era documentada
+    no README como limitação conhecida antes desta etapa. `mypy` executado
+    com sucesso; `pytest` executado com sucesso. Nenhuma dependência ou
+    configuração de ferramental foi alterada nesta etapa — a configuração
+    do Ruff (dependência, regras de lint, integração com o fluxo de
+    qualidade) fica registrada como tarefa independente, a ser tratada
+    separadamente.
+  - Ainda falta desta fase: `InfrastructureVariableResolver` (resolução de
+    `{{baseUrl}}`/prefixo fixo via `--collection-path-prefix`) — decisão
+    explícita de deixar fora deste passo (ver R2-04).
 - [ ] **Fase 4** — characterization tests do `AgentOrchestrator` atual,
       depois `SchemaProvider` (porta) + `InferenceSchemaProvider`/
       `DeclaredSchemaProvider` + mudança aditiva no `AgentOrchestrator`.
