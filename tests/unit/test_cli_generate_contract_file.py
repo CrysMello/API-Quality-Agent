@@ -4,7 +4,7 @@ import openpyxl
 import pytest
 from conftest import FAKE_API_KEY
 
-from api_quality_agent.cli.exit_codes import INVALID_INPUT_OR_CONFIGURATION, SUCCESS
+from api_quality_agent.cli.exit_codes import FUNCTIONAL_FAILURE, INVALID_INPUT_OR_CONFIGURATION, SUCCESS
 from api_quality_agent.cli.main import main
 
 _HEADER_ROW = ["Sequencial", "Nome do campo", "Formato", "Tamanho", "Obrigatoriedade", "Regras (Domínio)"]
@@ -227,3 +227,191 @@ def test_generate_with_corrupted_contract_file_returns_invalid_input_exit_code(o
 
     assert exit_code == INVALID_INPUT_OR_CONFIGURATION
     assert "Erro inesperado" not in capsys.readouterr().out
+
+
+# --collection-path-prefix: prefixo fixo de path (ex.: gateway) presente só
+# nas requests da Collection, ausente do path declarado no contrato.
+
+
+def _write_collection_file_with_prefix(path, *, prefix, name="Pets"):
+    document = {
+        "info": {
+            "name": name,
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [
+            {
+                "name": "Buscar pet",
+                "id": "req-1",
+                "request": {
+                    "method": "GET",
+                    "url": f"https://api.exemplo.com{prefix}/v2/pet/:petId",
+                },
+                "response": [
+                    {"name": "ok", "status": "OK", "code": 200, "header": [], "body": "{}"}
+                ],
+            }
+        ],
+    }
+    file_path = path / "collection.json"
+    file_path.write_text(json.dumps(document), encoding="utf-8")
+    return file_path
+
+
+def test_generate_without_collection_path_prefix_reports_not_found_when_collection_has_gateway_prefix(
+    offline_env, capsys
+):
+    collection_path = _write_collection_file_with_prefix(offline_env, prefix="/api")
+    contract_path = _write_contract_file(offline_env, uri="/v2/pet/{{petId}}")
+
+    exit_code = main(
+        ["generate", "--file", str(collection_path), "--contract-file", str(contract_path), "--yes"]
+    )
+
+    assert exit_code == SUCCESS
+    report_dir = offline_env / "artifacts" / "local"
+    payload = json.loads(next(report_dir.rglob("contract-match-report.json")).read_text(encoding="utf-8"))
+    assert payload["summary"]["not_found"] == 1
+
+
+def test_generate_with_collection_path_prefix_matches_the_declared_contract(offline_env, capsys):
+    collection_path = _write_collection_file_with_prefix(offline_env, prefix="/api")
+    contract_path = _write_contract_file(offline_env, uri="/v2/pet/{{petId}}")
+
+    exit_code = main(
+        [
+            "generate",
+            "--file",
+            str(collection_path),
+            "--contract-file",
+            str(contract_path),
+            "--collection-path-prefix",
+            "/api",
+            "--yes",
+        ]
+    )
+
+    assert exit_code == SUCCESS
+    report_dir = offline_env / "artifacts" / "local"
+    payload = json.loads(next(report_dir.rglob("contract-match-report.json")).read_text(encoding="utf-8"))
+    assert payload["summary"]["matched"] == 1
+
+
+def test_generate_rejects_collection_path_prefix_without_contract_file(offline_env):
+    collection_path = _write_collection_file(offline_env)
+
+    exit_code = main(
+        [
+            "generate",
+            "--file",
+            str(collection_path),
+            "--collection-path-prefix",
+            "/api",
+            "--yes",
+        ]
+    )
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+
+
+def test_generate_rejects_collection_path_prefix_with_no_usable_segment(offline_env):
+    collection_path = _write_collection_file(offline_env)
+    contract_path = _write_contract_file(offline_env)
+
+    exit_code = main(
+        [
+            "generate",
+            "--file",
+            str(collection_path),
+            "--contract-file",
+            str(contract_path),
+            "--collection-path-prefix",
+            "////",
+            "--yes",
+        ]
+    )
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION
+
+
+# --strict-contract-match: processa todos os endpoints e persiste o
+# Contract Match Report normalmente; só depois decide falhar (exit code 1)
+# se houver UNMATCHED/AMBIGUOUS.
+
+
+def test_generate_strict_contract_match_succeeds_when_everything_is_matched(offline_env, capsys):
+    collection_path = _write_collection_file(offline_env)
+    contract_path = _write_contract_file(offline_env)
+
+    exit_code = main(
+        [
+            "generate",
+            "--file",
+            str(collection_path),
+            "--contract-file",
+            str(contract_path),
+            "--strict-contract-match",
+            "--yes",
+        ]
+    )
+
+    assert exit_code == SUCCESS
+    assert "Processo concluído com sucesso" in capsys.readouterr().out
+
+
+def test_generate_strict_contract_match_fails_with_functional_failure_exit_code_when_unmatched(
+    offline_env, capsys
+):
+    collection_path = _write_collection_file(offline_env)
+    contract_path = _write_contract_file(offline_env, uri="/v2/outra-coisa")
+
+    exit_code = main(
+        [
+            "generate",
+            "--file",
+            str(collection_path),
+            "--contract-file",
+            str(contract_path),
+            "--strict-contract-match",
+            "--yes",
+        ]
+    )
+
+    assert exit_code == FUNCTIONAL_FAILURE
+    captured = capsys.readouterr()
+    assert "Processo concluído com sucesso" not in captured.out
+    assert "Contract Match Summary" in captured.err
+    assert "Unmatched: 1" in captured.err
+
+    # O relatório precisa existir em disco mesmo com o comando falhando.
+    report_dir = offline_env / "artifacts" / "local"
+    json_reports = list(report_dir.rglob("contract-match-report.json"))
+    html_reports = list(report_dir.rglob("contract-match-report.html"))
+    assert len(json_reports) == 1
+    assert len(html_reports) == 1
+    payload = json.loads(json_reports[0].read_text(encoding="utf-8"))
+    assert payload["summary"]["not_found"] == 1
+
+
+def test_generate_without_strict_contract_match_succeeds_even_with_unmatched_endpoints(
+    offline_env, capsys
+):
+    collection_path = _write_collection_file(offline_env)
+    contract_path = _write_contract_file(offline_env, uri="/v2/outra-coisa")
+
+    exit_code = main(
+        ["generate", "--file", str(collection_path), "--contract-file", str(contract_path), "--yes"]
+    )
+
+    assert exit_code == SUCCESS
+    assert "Processo concluído com sucesso" in capsys.readouterr().out
+
+
+def test_generate_rejects_strict_contract_match_without_contract_file(offline_env):
+    collection_path = _write_collection_file(offline_env)
+
+    exit_code = main(
+        ["generate", "--file", str(collection_path), "--strict-contract-match", "--yes"]
+    )
+
+    assert exit_code == INVALID_INPUT_OR_CONFIGURATION

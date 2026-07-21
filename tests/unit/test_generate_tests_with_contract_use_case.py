@@ -6,7 +6,7 @@ import pytest
 
 from api_quality_agent.adapters.filesystem import LocalArtifactRepository
 from api_quality_agent.application.use_cases import GenerateTestsWithContractUseCase
-from api_quality_agent.domain.exceptions import InputError
+from api_quality_agent.domain.exceptions import InputError, StrictContractMatchFailedError
 from api_quality_agent.domain.services import (
     ApiAnalysisEngine,
     DiffEngine,
@@ -144,3 +144,126 @@ def test_execute_online_without_workspace_dependencies_raises_input_error(tmp_pa
 
     with pytest.raises(InputError):
         use_case.execute_online(contract_file="qualquer.xlsx", collection_id="abc")
+
+
+def test_execute_offline_without_collection_path_prefix_reports_not_found_when_collection_has_gateway_prefix(
+    tmp_path,
+):
+    # Contrato declara o path sem o prefixo de gateway; a Collection real
+    # usa o prefixo — sem a flag, não deve casar (comportamento atual).
+    contract_path = _build_contract_workbook(tmp_path, [("Planilha1", "GET", "/v1/users/{id}")])
+    document = _parse_document(
+        [{"name": "Buscar usuário", "id": "r1", "request": {"method": "GET", "url": "https://x/api/v1/users/:id"}}]
+    )
+
+    use_case = _build_use_case(tmp_path)
+    result = use_case.execute_offline(contract_file=contract_path, document=document)
+
+    json_location = next(
+        loc for loc in result.artifact_locations if loc.path.endswith("contract-match-report.json")
+    )
+    payload = json.loads(Path(json_location.path).read_text(encoding="utf-8"))
+    assert payload["summary"]["not_found"] == 1
+    assert payload["summary"]["matched"] == 0
+
+
+def test_execute_offline_with_collection_path_prefix_matches_the_declared_contract(tmp_path):
+    contract_path = _build_contract_workbook(tmp_path, [("Planilha1", "GET", "/v1/users/{id}")])
+    document = _parse_document(
+        [{"name": "Buscar usuário", "id": "r1", "request": {"method": "GET", "url": "https://x/api/v1/users/:id"}}]
+    )
+
+    use_case = _build_use_case(tmp_path)
+    result = use_case.execute_offline(
+        contract_file=contract_path, document=document, collection_path_prefix="/api"
+    )
+
+    json_location = next(
+        loc for loc in result.artifact_locations if loc.path.endswith("contract-match-report.json")
+    )
+    payload = json.loads(Path(json_location.path).read_text(encoding="utf-8"))
+    assert payload["summary"]["matched"] == 1
+    assert payload["summary"]["not_found"] == 0
+
+
+# --strict-contract-match: processa todos os endpoints e persiste o
+# Contract Match Report normalmente; só depois decide falhar o comando se
+# houver UNMATCHED/AMBIGUOUS.
+
+
+def test_strict_contract_match_does_not_raise_when_everything_is_matched(tmp_path):
+    contract_path = _build_contract_workbook(
+        tmp_path, [("Planilha1", "GET", "/v2/pet/{{petId}}")]
+    )
+    document = _parse_document(
+        [{"name": "Buscar pet", "id": "r1", "request": {"method": "GET", "url": "https://x/v2/pet/:petId"}}]
+    )
+
+    use_case = _build_use_case(tmp_path)
+    result = use_case.execute_offline(
+        contract_file=contract_path, document=document, strict_contract_match=True
+    )
+
+    assert result.endpoint_outcomes[0].error is None
+
+
+def test_strict_contract_match_raises_when_an_endpoint_is_not_found(tmp_path):
+    contract_path = _build_contract_workbook(tmp_path, [("Planilha1", "GET", "/v2/outra-coisa")])
+    document = _parse_document(
+        [{"name": "Buscar pet", "id": "r1", "request": {"method": "GET", "url": "https://x/v2/pet/1"}}]
+    )
+
+    use_case = _build_use_case(tmp_path)
+
+    with pytest.raises(StrictContractMatchFailedError) as exc_info:
+        use_case.execute_offline(
+            contract_file=contract_path, document=document, strict_contract_match=True
+        )
+
+    message = str(exc_info.value)
+    assert "Unmatched: 1" in message
+    assert "Ambiguous: 0" in message
+
+    # O relatório precisa ter sido persistido ANTES da falha estrita.
+    json_reports = list((tmp_path / "artifacts").rglob("contract-match-report.json"))
+    html_reports = list((tmp_path / "artifacts").rglob("contract-match-report.html"))
+    assert len(json_reports) == 1
+    assert len(html_reports) == 1
+    payload = json.loads(json_reports[0].read_text(encoding="utf-8"))
+    assert payload["summary"]["not_found"] == 1
+
+
+def test_strict_contract_match_raises_when_an_endpoint_is_ambiguous(tmp_path):
+    contract_path = _build_contract_workbook(
+        tmp_path,
+        [
+            ("Planilha1", "GET", "/v2/pet/{{petId}}"),
+            ("Planilha2", "GET", "/v2/pet/{{petId}}"),
+        ],
+    )
+    document = _parse_document(
+        [{"name": "Buscar pet", "id": "r1", "request": {"method": "GET", "url": "https://x/v2/pet/:petId"}}]
+    )
+
+    use_case = _build_use_case(tmp_path)
+
+    with pytest.raises(StrictContractMatchFailedError) as exc_info:
+        use_case.execute_offline(
+            contract_file=contract_path, document=document, strict_contract_match=True
+        )
+
+    assert "Ambiguous: 1" in str(exc_info.value)
+
+
+def test_default_mode_does_not_raise_even_with_unmatched_endpoints(tmp_path):
+    # strict_contract_match ausente (default False): comportamento atual
+    # preservado — endpoint sem contrato pareado nunca é motivo de falha.
+    contract_path = _build_contract_workbook(tmp_path, [("Planilha1", "GET", "/v2/outra-coisa")])
+    document = _parse_document(
+        [{"name": "Buscar pet", "id": "r1", "request": {"method": "GET", "url": "https://x/v2/pet/1"}}]
+    )
+
+    use_case = _build_use_case(tmp_path)
+    result = use_case.execute_offline(contract_file=contract_path, document=document)
+
+    assert result.endpoint_outcomes[0].error is None

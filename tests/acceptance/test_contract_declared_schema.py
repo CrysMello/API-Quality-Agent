@@ -180,3 +180,93 @@ def test_generate_with_excel_contract_falls_back_to_inference_for_unmatched_requ
     )
     payload = json.loads(Path(match_json.path).read_text(encoding="utf-8"))
     assert payload["summary"]["not_found"] == 1
+
+
+_GATEWAY_COLLECTION_ID = "col-contract-gateway"
+_GATEWAY_COLLECTION_NAME = "Pets API (gateway)"
+
+
+def _gateway_collection_payload() -> dict:
+    # Collection representativa de um cenário real de gateway: a request
+    # carrega um prefixo fixo ("/api") que o contrato declarado não tem —
+    # exatamente o problema que --collection-path-prefix resolve.
+    request: dict = {
+        "name": "Buscar pet",
+        "id": "req-pet-gateway",
+        "request": {"method": "GET", "url": "https://api.exemplo.com/api/pets/:petId"},
+        "response": [{"name": "ok", "status": "OK", "code": 200, "header": [], "body": '{"id": 1}'}],
+    }
+    return {
+        "info": {
+            "name": _GATEWAY_COLLECTION_NAME,
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "item": [request],
+    }
+
+
+def _configure_gateway_server(server) -> None:
+    server.set_route("/me", status=200, body={"user": {"id": 1, "username": "qa"}})
+    server.set_route(
+        "/workspaces", status=200, body={"workspaces": [{"id": WORKSPACE_ID, "name": WORKSPACE_NAME}]}
+    )
+    server.set_route(
+        f"/collections?workspace={WORKSPACE_ID}",
+        status=200,
+        body={
+            "collections": [
+                {"id": _GATEWAY_COLLECTION_ID, "uid": _GATEWAY_COLLECTION_ID, "name": _GATEWAY_COLLECTION_NAME}
+            ]
+        },
+    )
+    server.set_route(
+        f"/collections/{_GATEWAY_COLLECTION_ID}",
+        status=200,
+        body={"collection": _gateway_collection_payload()},
+    )
+
+
+def test_generate_without_collection_path_prefix_does_not_match_a_gateway_collection(
+    postman_test_server, tmp_path
+):
+    _configure_gateway_server(postman_test_server)
+    app = build_app(postman_test_server, tmp_path)
+    app.select_workspace.execute(workspace_id=WORKSPACE_ID)
+    contract_file = _write_contract_file(tmp_path)  # contrato declara "/pets/{{petId}}", sem "/api"
+
+    use_case = _build_generate_with_contract_use_case(app)
+    result = use_case.execute_online(contract_file=contract_file, collection_id=_GATEWAY_COLLECTION_ID)
+
+    match_json = next(
+        location for location in result.artifact_locations if location.path.endswith("contract-match-report.json")
+    )
+    payload = json.loads(Path(match_json.path).read_text(encoding="utf-8"))
+    assert payload["summary"]["not_found"] == 1
+
+
+def test_generate_with_collection_path_prefix_matches_a_gateway_collection(
+    postman_test_server, tmp_path
+):
+    _configure_gateway_server(postman_test_server)
+    app = build_app(postman_test_server, tmp_path)
+    app.select_workspace.execute(workspace_id=WORKSPACE_ID)
+    contract_file = _write_contract_file(tmp_path)
+
+    use_case = _build_generate_with_contract_use_case(app)
+    result = use_case.execute_online(
+        contract_file=contract_file,
+        collection_id=_GATEWAY_COLLECTION_ID,
+        collection_path_prefix="/api",
+    )
+
+    outcome = result.endpoint_outcomes[0]
+    assert outcome.error is None
+    assert "pm.test(" in outcome.generated_script.script
+
+    match_json = next(
+        location for location in result.artifact_locations if location.path.endswith("contract-match-report.json")
+    )
+    payload = json.loads(Path(match_json.path).read_text(encoding="utf-8"))
+    assert payload["summary"]["matched"] == 1
+    assert payload["matches"][0]["status"] == "MATCHED"
+    assert payload["matches"][0]["sheet"] == "Pets"

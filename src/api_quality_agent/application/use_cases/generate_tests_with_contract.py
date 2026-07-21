@@ -2,6 +2,7 @@ import re
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
+from typing import NamedTuple
 
 from api_quality_agent.application.orchestration import AgentOrchestrator, CollectionGenerationResult
 from api_quality_agent.application.use_cases.generate_collection_tests import (
@@ -12,12 +13,17 @@ from api_quality_agent.application.use_cases.generate_tests_from_document import
 )
 from api_quality_agent.application.use_cases.get_current_workspace import GetCurrentWorkspaceUseCase
 from api_quality_agent.application.use_cases.resolve_collection import ResolveCollectionUseCase
-from api_quality_agent.domain.exceptions import InputError, InvalidPostmanCollectionError
+from api_quality_agent.domain.exceptions import (
+    InputError,
+    InvalidPostmanCollectionError,
+    StrictContractMatchFailedError,
+)
 from api_quality_agent.domain.models import (
     ArtifactLocation,
     CanonicalEndpoint,
     DeclaredContractCatalog,
     GeneratedArtifact,
+    MatchStatus,
     PostmanCollectionDocument,
 )
 from api_quality_agent.domain.services import (
@@ -53,6 +59,26 @@ from api_quality_agent.ports.outbound import ArtifactRepository, CollectionRepos
 
 _LOCAL_FILE_WORKSPACE_ID = "local"
 _UNSAFE_SLUG_CHARS = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+class _MatchReportOutcome(NamedTuple):
+    artifact_locations: tuple[ArtifactLocation, ...]
+    matched: int
+    not_found: int
+    ambiguous: int
+
+
+def _strict_match_failure_message(outcome: "_MatchReportOutcome") -> str:
+    return (
+        "Contract Match Summary\n"
+        f"  Matched: {outcome.matched}\n"
+        f"  Unmatched: {outcome.not_found}\n"
+        f"  Ambiguous: {outcome.ambiguous}\n\n"
+        "Modo estrito habilitado. O comando terminou com falha.\n"
+        "Consulte:\n"
+        "  contract-match-report.json\n"
+        "  contract-match-report.html"
+    )
 
 
 class GenerateTestsWithContractUseCase:
@@ -93,6 +119,8 @@ class GenerateTestsWithContractUseCase:
         contract_file: str,
         collection_id: str | None = None,
         collection_name: str | None = None,
+        collection_path_prefix: str | None = None,
+        strict_contract_match: bool = False,
     ) -> CollectionGenerationResult:
         if (
             self._get_current_workspace_use_case is None
@@ -105,7 +133,7 @@ class GenerateTestsWithContractUseCase:
             )
 
         catalog = self._excel_contract_parser.parse(contract_file).catalog
-        normalizer = CanonicalEndpointNormalizer()
+        normalizer = CanonicalEndpointNormalizer(collection_path_prefix=collection_path_prefix)
         matcher = ContractEndpointMatcher(normalizer)
 
         delegate = GenerateCollectionTestsUseCase(
@@ -121,7 +149,7 @@ class GenerateTestsWithContractUseCase:
 
         assert result.execution_context.workspace_id is not None
         assert result.execution_context.collection_id is not None
-        match_locations = self._save_match_report(
+        report_outcome = self._save_match_report(
             contract_file,
             catalog,
             matcher,
@@ -130,13 +158,22 @@ class GenerateTestsWithContractUseCase:
             workspace_id=result.execution_context.workspace_id,
             collection_id=result.execution_context.collection_id,
         )
-        return replace(result, artifact_locations=result.artifact_locations + match_locations)
+        result = replace(
+            result, artifact_locations=result.artifact_locations + report_outcome.artifact_locations
+        )
+        self._enforce_strict_contract_match(strict_contract_match, report_outcome)
+        return result
 
     def execute_offline(
-        self, *, contract_file: str, document: PostmanCollectionDocument
+        self,
+        *,
+        contract_file: str,
+        document: PostmanCollectionDocument,
+        collection_path_prefix: str | None = None,
+        strict_contract_match: bool = False,
     ) -> CollectionGenerationResult:
         catalog = self._excel_contract_parser.parse(contract_file).catalog
-        normalizer = CanonicalEndpointNormalizer()
+        normalizer = CanonicalEndpointNormalizer(collection_path_prefix=collection_path_prefix)
         matcher = ContractEndpointMatcher(normalizer)
 
         delegate = GenerateTestsFromDocumentUseCase(
@@ -147,7 +184,7 @@ class GenerateTestsWithContractUseCase:
         )
         result = delegate.execute(document=document)
 
-        match_locations = self._save_match_report(
+        report_outcome = self._save_match_report(
             contract_file,
             catalog,
             matcher,
@@ -156,7 +193,11 @@ class GenerateTestsWithContractUseCase:
             workspace_id=_LOCAL_FILE_WORKSPACE_ID,
             collection_id=_slugify(document.name),
         )
-        return replace(result, artifact_locations=result.artifact_locations + match_locations)
+        result = replace(
+            result, artifact_locations=result.artifact_locations + report_outcome.artifact_locations
+        )
+        self._enforce_strict_contract_match(strict_contract_match, report_outcome)
+        return result
 
     def _build_orchestrator(
         self,
@@ -177,6 +218,18 @@ class GenerateTestsWithContractUseCase:
             self._diff_engine,
         )
 
+    def _enforce_strict_contract_match(
+        self, strict_contract_match: bool, report_outcome: "_MatchReportOutcome"
+    ) -> None:
+        # Avaliado só depois que o Contract Match Report já foi construído E
+        # persistido (json/html) — modo estrito nunca interrompe o
+        # processamento dos endpoints nem impede a geração/gravação dos
+        # artefatos, só decide o resultado final do comando.
+        if not strict_contract_match:
+            return
+        if report_outcome.not_found > 0 or report_outcome.ambiguous > 0:
+            raise StrictContractMatchFailedError(_strict_match_failure_message(report_outcome))
+
     def _save_match_report(
         self,
         contract_file: str,
@@ -187,7 +240,7 @@ class GenerateTestsWithContractUseCase:
         *,
         workspace_id: str,
         collection_id: str,
-    ) -> tuple[ArtifactLocation, ...]:
+    ) -> _MatchReportOutcome:
         # Import local: reporting/__init__.py importa report_engine.py, que
         # depende de application.use_cases (CollectionUpdateResult) — um
         # import no topo deste módulo criaria um ciclo real na inicialização
@@ -229,7 +282,7 @@ class GenerateTestsWithContractUseCase:
             relative_path="contract-match-report.html",
             content=render_contract_match_report_html(report),
         )
-        return (
+        locations = (
             self._artifact_repository.save(
                 workspace_id=workspace_id,
                 collection_id=collection_id,
@@ -242,6 +295,12 @@ class GenerateTestsWithContractUseCase:
                 execution_id=result.execution_context.execution_id,
                 artifact=html_artifact,
             ),
+        )
+        return _MatchReportOutcome(
+            artifact_locations=locations,
+            matched=sum(1 for r in match_results if r.status is MatchStatus.MATCHED),
+            not_found=sum(1 for r in match_results if r.status is MatchStatus.NOT_FOUND),
+            ambiguous=sum(1 for r in match_results if r.status is MatchStatus.AMBIGUOUS),
         )
 
 

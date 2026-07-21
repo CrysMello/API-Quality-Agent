@@ -47,6 +47,29 @@ def register(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         ),
     )
     parser.add_argument(
+        "--collection-path-prefix",
+        dest="collection_path_prefix",
+        default=None,
+        metavar="PREFIXO",
+        help=(
+            "Prefixo fixo de path presente nas requests da Collection mas ausente "
+            "do path declarado no contrato (ex.: prefixo de gateway). Removido só "
+            "por correspondência exata de segmentos no início do path. Requer "
+            "--contract-file."
+        ),
+    )
+    parser.add_argument(
+        "--strict-contract-match",
+        dest="strict_contract_match",
+        action="store_true",
+        help=(
+            "Falha o comando (exit code 1) se algum endpoint ficar sem contrato "
+            "correspondente (UNMATCHED) ou com correspondência ambígua (AMBIGUOUS). "
+            "O Contract Match Report ainda é gerado e persistido antes da falha. "
+            "Requer --contract-file."
+        ),
+    )
+    parser.add_argument(
         "-y",
         "--yes",
         dest="yes",
@@ -60,6 +83,10 @@ def _handle_generate(args: argparse.Namespace) -> int:
     collection_selection.validate_selection_arguments(args, extra_fields=("file", "openapi_file"))
     if args.contract_file is not None and args.openapi_file is not None:
         raise InputError("--contract-file não pode ser combinado com --openapi-file.")
+    if args.collection_path_prefix is not None and args.contract_file is None:
+        raise InputError("--collection-path-prefix requer --contract-file.")
+    if args.strict_contract_match and args.contract_file is None:
+        raise InputError("--strict-contract-match requer --contract-file.")
 
     if args.file is not None:
         return _handle_generate_from_file(args)
@@ -93,7 +120,10 @@ def _handle_generate(args: argparse.Namespace) -> int:
     # persiste), nunca altera a seleção ativa salva em disco.
     if args.contract_file is not None:
         result = context.generate_with_contract_use_case.execute_online(
-            contract_file=args.contract_file, collection_id=selected.id
+            contract_file=args.contract_file,
+            collection_id=selected.id,
+            collection_path_prefix=args.collection_path_prefix,
+            strict_contract_match=args.strict_contract_match,
         )
     else:
         result = context.generate_use_case.execute(collection_id=selected.id)
@@ -122,7 +152,10 @@ def _handle_generate_from_file(args: argparse.Namespace) -> int:
     print("Gerando testes (modo local, sem conexão com a API do Postman)...")
     if args.contract_file is not None:
         result = context.generate_with_contract_use_case.execute_offline(
-            contract_file=args.contract_file, document=document
+            contract_file=args.contract_file,
+            document=document,
+            collection_path_prefix=args.collection_path_prefix,
+            strict_contract_match=args.strict_contract_match,
         )
     else:
         result = context.generate_from_file_use_case.execute(document=document)

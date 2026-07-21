@@ -13,6 +13,7 @@ from api_quality_agent.domain.exceptions.errors import (
     SelectionError,
     UpdateNotApprovedError,
 )
+from api_quality_agent.domain.exceptions.contract_errors import StrictContractMatchFailedError
 from api_quality_agent.domain.exceptions.execution_result_errors import (
     InvalidExecutionResultError,
     ReportAlreadyExistsError,
@@ -66,6 +67,7 @@ __all__ = [
     "ReportAlreadyExistsError",
     "ResourceNotFoundError",
     "SelectionError",
+    "StrictContractMatchFailedError",
     "UnclosedManagedBlockError",
     "UnresolvedReferenceError",
     "UnsupportedExecutionResultSchemaError",
