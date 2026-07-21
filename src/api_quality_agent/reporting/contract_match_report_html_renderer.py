@@ -1,6 +1,6 @@
 from html import escape
 
-from api_quality_agent.domain.models import MatchStatus
+from api_quality_agent.domain.models import ContractValidationIssue, MatchStatus
 from api_quality_agent.reporting.contract_match_report import ContractMatchEntry, ContractMatchReport
 
 # Renderer dedicado ao relatório de correspondência de contrato — mesma
@@ -36,6 +36,7 @@ def render_contract_match_report_html(report: ContractMatchReport) -> str:
 <main>
 {_render_summary(report)}
 {_render_table(report)}
+{_render_validation_issues(report)}
 </main>
 </body>
 </html>"""
@@ -64,7 +65,7 @@ def _render_table(report: ContractMatchReport) -> str:
   <h2>Correspondências</h2>
   <table>
     <thead>
-      <tr><th>Status</th><th>Método</th><th>Path</th><th>Aba / Candidatos</th></tr>
+      <tr><th>Status</th><th>Método</th><th>Path</th><th>Aba / Candidatos</th><th>Diagnósticos</th></tr>
     </thead>
     <tbody>
       {rows}
@@ -77,14 +78,50 @@ def _render_row(entry: ContractMatchEntry) -> str:
     status_class = entry.status.value.lower()
     status_label = _STATUS_LABELS[entry.status]
     detail = ""
+    diagnostics = ""
     if entry.status is MatchStatus.MATCHED:
         detail = escape(entry.sheet or "")
+        if entry.validation_issues:
+            diagnostics = f"{len(entry.validation_issues)}"
     elif entry.status is MatchStatus.AMBIGUOUS:
         detail = ", ".join(escape(sheet) for sheet in entry.candidate_sheets)
+        if entry.candidate_validation_issues:
+            diagnostics = ", ".join(
+                f"{escape(candidate.sheet)}: {len(candidate.issues)}"
+                for candidate in entry.candidate_validation_issues
+            )
     return (
         f'<tr><td><span class="status status-{status_class}">{status_label}</span></td>'
         f"<td>{escape(entry.method)}</td><td><code>{escape(entry.canonical_path)}</code></td>"
-        f"<td>{detail}</td></tr>"
+        f"<td>{detail}</td><td>{diagnostics}</td></tr>"
+    )
+
+
+def _render_validation_issues(report: ContractMatchReport) -> str:
+    if not report.validation_issues:
+        return ""
+
+    rows = "".join(_render_issue_row(issue) for issue in report.validation_issues)
+    return f"""<section aria-label="Diagnósticos de validação">
+  <h2>Diagnósticos de validação</h2>
+  <table>
+    <thead>
+      <tr><th>Severidade</th><th>Aba</th><th>Linha</th><th>Campo</th><th>Mensagem</th></tr>
+    </thead>
+    <tbody>
+      {rows}
+    </tbody>
+  </table>
+</section>"""
+
+
+def _render_issue_row(issue: ContractValidationIssue) -> str:
+    row_label = str(issue.row_number) if issue.row_number is not None else ""
+    field_label = escape(issue.field) if issue.field is not None else ""
+    return (
+        f'<tr><td><span class="severity severity-{escape(issue.severity)}">{escape(issue.severity)}</span></td>'
+        f"<td>{escape(issue.sheet)}</td><td>{row_label}</td><td>{field_label}</td>"
+        f"<td>{escape(issue.message)}</td></tr>"
     )
 
 
@@ -121,5 +158,13 @@ code { font-size: 0.85em; }
   .status-matched { background: #14532d; color: #bbf7d0; }
   .status-not_found { background: #7f1d1d; color: #fecaca; }
   .status-ambiguous { background: #78350f; color: #fde68a; }
+}
+.severity { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-weight: 700;
+  font-size: 0.8rem; }
+.severity-error { background: #fee2e2; color: #991b1b; }
+.severity-warning { background: #fef3c7; color: #92400e; }
+@media (prefers-color-scheme: dark) {
+  .severity-error { background: #7f1d1d; color: #fecaca; }
+  .severity-warning { background: #78350f; color: #fde68a; }
 }
 """

@@ -114,7 +114,7 @@ class ExcelContractParser:
     ) -> tuple[list[RawContractRow], DeclaredEndpointContract | None]:
         rows = list(worksheet.iter_rows(values_only=True))
 
-        method, uri = self._find_metadata(rows)
+        method, uri, source_row = self._find_metadata(rows)
         sections = self._split_sections(worksheet.title, rows)
         raw_rows = [row for rows_in_section in sections.values() for row in rows_in_section]
 
@@ -139,22 +139,33 @@ class ExcelContractParser:
             request=request,
             response=response,
             source_sheet=worksheet.title,
+            source_row=source_row,
         )
         return raw_rows, contract
 
-    def _find_metadata(self, rows: list[tuple[Any, ...]]) -> tuple[str | None, str | None]:
+    def _find_metadata(
+        self, rows: list[tuple[Any, ...]]
+    ) -> tuple[str | None, str | None, int | None]:
         method: str | None = None
         uri: str | None = None
-        for row in rows:
+        # Linha física (1-based) da primeira ocorrência de "URI" ou "Método"
+        # encontrada — o início do bloco de metadados do contrato,
+        # preservada em DeclaredEndpointContract.source_row (R2-09A).
+        source_row: int | None = None
+        for row_number, row in enumerate(rows, start=1):
             for index, cell in enumerate(row):
                 label = normalize_label(cell)
                 if label == "uri" and uri is None:
                     uri = self._first_non_empty_after(row, index)
+                    if source_row is None:
+                        source_row = row_number
                 elif label == "metodo" and method is None:
                     method = self._first_non_empty_after(row, index)
+                    if source_row is None:
+                        source_row = row_number
             if method and uri:
                 break
-        return method, uri
+        return method, uri, source_row
 
     @staticmethod
     def _first_non_empty_after(row: tuple[Any, ...], index: int) -> str | None:

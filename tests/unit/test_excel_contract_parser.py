@@ -89,6 +89,60 @@ def test_source_file_is_recorded(tmp_path):
     assert catalog.source_file == str(path)
 
 
+def test_source_row_captures_the_physical_row_of_the_first_metadata_label(tmp_path):
+    # Em _MODEL_SHEET_ROWS, "URI" está na linha 6 (1-based) e "Método" na
+    # linha 7 — source_row deve ser o menor dos dois (início do bloco de
+    # metadados), não o índice interno da lista nem a linha do cabeçalho
+    # da seção seguinte.
+    path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
+
+    endpoint = ExcelContractParser().parse(path).catalog.contracts[0]
+
+    assert endpoint.source_row == 6
+
+
+def test_source_row_is_stable_across_repeated_parses(tmp_path):
+    path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
+
+    first = ExcelContractParser().parse(path).catalog.contracts[0]
+    second = ExcelContractParser().parse(path).catalog.contracts[0]
+
+    assert first.source_row == second.source_row == 6
+    assert first.source_sheet == second.source_sheet == "Planilha1"
+
+
+def test_source_row_reflects_metodo_when_it_appears_before_uri(tmp_path):
+    rows = [
+        ["Método", "GET"],
+        ["URI", "/v1/pets"],
+    ]
+    path = _build_workbook(tmp_path, sheets={"Planilha1": rows})
+
+    endpoint = ExcelContractParser().parse(path).catalog.contracts[0]
+
+    assert endpoint.source_row == 1
+
+
+def test_each_sheet_keeps_its_own_source_row_in_multi_sheet_catalog(tmp_path):
+    other_sheet_rows = [
+        ["Situação", "x"],
+        ["URI", "/teste/v1/outra"],
+        ["Método", "GET"],
+        ["Requisição(Body)"],
+        ["Sequencial", "Nome do campo", "Formato", "Tamanho", "Obrigatoriedade", "Regras (Domínio)"],
+    ]
+    path = _build_workbook(
+        tmp_path,
+        sheets={"Planilha1": _MODEL_SHEET_ROWS, "Planilha2": other_sheet_rows},
+    )
+
+    catalog = ExcelContractParser().parse(path).catalog
+
+    by_sheet = {contract.source_sheet: contract for contract in catalog.contracts}
+    assert by_sheet["Planilha1"].source_row == 6
+    assert by_sheet["Planilha2"].source_row == 2
+
+
 def test_header_becomes_a_required_string_parameter(tmp_path):
     path = _build_workbook(tmp_path, sheets={"Planilha1": _MODEL_SHEET_ROWS})
 

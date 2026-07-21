@@ -17,6 +17,11 @@ class DeclaredEndpointContract:
     request: DeclaredRequestContract
     response: DeclaredResponseContract
     source_sheet: str
+    # Linha física onde Método/URI foram encontrados na planilha (R2-09A) —
+    # preservada para rastreabilidade e evolução futura (hoje a correlação
+    # com diagnósticos de validação ainda usa só source_sheet, porque uma
+    # aba produz no máximo um contrato; não há lógica de faixa de linhas).
+    source_row: int | None = None
     warnings: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:

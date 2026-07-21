@@ -1,4 +1,5 @@
 from api_quality_agent.reporting.contract_match_report import (
+    CandidateValidationIssues,
     ContractMatchEntry,
     ContractMatchReport,
     ContractMatchSummary,
@@ -31,6 +32,7 @@ from api_quality_agent.reporting.report_serializer import render_report_json, se
 from api_quality_agent.reporting.report_summary_renderer import render_report_summary
 
 __all__ = [
+    "CandidateValidationIssues",
     "ContractMatchEntry",
     "ContractMatchReport",
     "ContractMatchSummary",

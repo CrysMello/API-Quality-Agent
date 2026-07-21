@@ -24,6 +24,7 @@ from api_quality_agent.domain.models.contract_change import ContractChange
 from api_quality_agent.domain.models.contract_change_type import ContractChangeType
 from api_quality_agent.domain.models.contract_match_result import ContractMatchResult
 from api_quality_agent.domain.models.contract_snapshot import ContractSnapshot
+from api_quality_agent.domain.models.contract_validation_issue import ContractValidationIssue
 from api_quality_agent.domain.models.declared_contract_catalog import DeclaredContractCatalog
 from api_quality_agent.domain.models.declared_endpoint_contract import DeclaredEndpointContract
 from api_quality_agent.domain.models.declared_parameter import DeclaredParameter
@@ -127,6 +128,7 @@ __all__ = [
     "ContractChangeType",
     "ContractMatchResult",
     "ContractSnapshot",
+    "ContractValidationIssue",
     "DeclaredContractCatalog",
     "DeclaredEndpointContract",
     "DeclaredParameter",

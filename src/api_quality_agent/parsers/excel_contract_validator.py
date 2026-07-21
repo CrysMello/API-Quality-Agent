@@ -1,6 +1,4 @@
-from dataclasses import dataclass
-
-from api_quality_agent.domain.models import DeclaredContractCatalog
+from api_quality_agent.domain.models import ContractValidationIssue, DeclaredContractCatalog
 from api_quality_agent.parsers.excel_contract_normalization import (
     map_declared_type,
     normalize_label,
@@ -12,16 +10,11 @@ from api_quality_agent.parsers.excel_contract_parser import RawContractRow
 # ExcelContractParser antes da árvore ser montada) e sobre o
 # DeclaredContractCatalog já construído. Não conhece Collection nem Postman
 # — puramente sobre o que está declarado na planilha.
-
-
-@dataclass(frozen=True)
-class ContractValidationIssue:
-    severity: str  # "error" | "warning"
-    sheet: str
-    section: str | None
-    row_number: int | None
-    field: str | None
-    message: str
+#
+# ContractValidationIssue vive em domain/models/ (não aqui) porque, a partir
+# da R2-09A, é consumida também pela camada de reporting — mantê-la nos
+# parsers criaria uma dependência reporting -> parsers, invertendo a direção
+# correta (tudo depende de domínio, domínio não depende de nada).
 
 
 class ExcelContractValidator:
