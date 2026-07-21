@@ -13,6 +13,7 @@ authors = [{ name = "Crystiane Mello" }]
 maintainers = [{ name = "Crystiane Mello" }]
 dependencies = [
     "PyYAML>=6.0",
+    "openpyxl>=3.1",
 ]
 
 [project.urls]
@@ -27,6 +28,7 @@ dev = [
     "pytest>=8.0",
     "mypy>=1.10",
     "types-PyYAML>=6.0",
+    "types-openpyxl>=3.1",
 ]
 
 [tool.setuptools.packages.find]

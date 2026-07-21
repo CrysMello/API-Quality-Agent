@@ -23,11 +23,11 @@ implementação, decisões de escopo confirmadas e o checklist por fase.
   `pm.response.code`. Suporte a múltiplos status por endpoint é evolução
   futura da arquitetura — decisão de escopo de produto, não débito técnico.
 
-## Nova dependência de runtime (pendente de confirmação)
+## Nova dependência de runtime
 
-`openpyxl` — necessária para o `ExcelContractParser` (Fase 2). Ainda não
-adicionada ao `pyproject.toml`; será a primeira dependência nova desde o
-`PyYAML`.
+`openpyxl>=3.1` — adicionada ao `pyproject.toml` na R2-02 (primeira
+dependência nova desde o `PyYAML`), junto com `types-openpyxl` como
+dependência de desenvolvimento (stubs pro `mypy`).
 
 ## Checklist de implementação por fase
 
@@ -44,9 +44,33 @@ adicionada ao `pyproject.toml`; será a primeira dependência nova desde o
   - Testes: `tests/unit/test_declared_contract_models.py` (24 testes —
     construção válida, imutabilidade, cada invariante de validação).
   - `mypy src`: limpo (201 arquivos). `pytest`: 902 passed, 1 skipped.
-- [ ] **Fase 2** — `ExcelContractParser` + `ExcelContractValidator` +
-      fixture anonimizada baseada na planilha modelo. Requer confirmação
-      para adicionar `openpyxl`.
+- [x] **Fase 2 (parcial) — `ExcelContractParser`** (R2-02, concluída; sem
+      Validator/Matcher/CLI, conforme escopo pedido)
+  - `src/api_quality_agent/parsers/excel_contract_parser.py`: lê o arquivo
+    `.xlsx` (`openpyxl`, somente leitura, sem macros), localiza `URI`/
+    `Método` por rótulo (sem depender de coordenadas fixas), reconhece as
+    seções Header/Path Param/Query Param/Body/Resposta-por-status-code
+    (tolerante a acento/espaço/caixa), reconstrói a árvore de
+    objeto/array a partir da coluna `Sequencial` (suporta sequencial
+    inteiro e pontuado), e converte `Formato`+`Obrigatoriedade` em
+    `DeclaredSchema`/`DeclaredParameter`.
+  - Decisão do adendo v1.1 aplicada: array sempre vira lista de objetos —
+    os filhos diretos compõem `items` mesmo quando há só um filho.
+  - Decisão R2-00B aplicada: só a seção "Status code 200" alimenta
+    `DeclaredResponseContract.schema`; outras seções de resposta (ex.: 400)
+    são reconhecidas (não quebram a leitura) mas descartadas.
+  - Sem Validator: uma aba sem `URI`/`Método` utilizável simplesmente não
+    vira contrato (não é registrada como `INVALID_CONTRACT` — isso fica
+    pra uma fase posterior).
+  - `Tamanho`/`Regras (Domínio)` não são lidos (fora de escopo do MVP).
+  - Testes: `tests/unit/test_excel_contract_parser.py` (11 testes —
+    metadados, cada seção de requisição, árvore de resposta 200 completa,
+    confirmação de que a seção 400 nunca vaza pro schema, aba sem
+    metadados, múltiplas abas, array com um único filho).
+  - `mypy src`: limpo (202 arquivos). `pytest`: 913 passed, 1 skipped.
+- [ ] **Fase 2 (restante)** — `ExcelContractValidator` (consistência:
+      sequencial duplicado, filho sem pai, tipo desconhecido, regra de aba
+      candidata formal com `INVALID_CONTRACT`).
 - [ ] **Gate (adendo v1.1, seção 5)** — validação com Collection real antes
       da Fase 3.
 - [ ] **Fase 3** — `CanonicalEndpointNormalizer` + `InfrastructureVariableResolver`
